@@ -255,13 +255,17 @@
       white-space: nowrap;
     }
 
-    .loading {
+    .loading, .empty {
       background: rgba(255,255,255,0.9);
       padding: 24px;
       border-radius: 18px;
       text-align: center;
       color: #64748b;
       box-shadow: 0 10px 30px rgba(37,99,235,0.08);
+    }
+
+    .empty strong {
+      color: #0f3ea8;
     }
 
     .modal {
@@ -369,12 +373,10 @@
         <label>Địa điểm</label>
         <select id="locationFilter">
           <option value="ALL">Tất cả địa điểm</option>
-          <option value="TTC">TTC</option>
-          <option value="VVO">VVO</option>
         </select>
       </div>
 
-      <button onclick="loadBookings()">Làm mới</button>
+      <button onclick="loadData()">Làm mới</button>
     </section>
 
     <main id="schedule">
@@ -382,7 +384,7 @@
     </main>
 
     <div class="notice">
-      Slot xanh nhạt = còn trống, xanh đậm = đã đặt, xám = đã qua giờ. Ca sáng nghỉ trưa 12:00–13:00.
+      Slot xanh nhạt = còn trống, xanh đậm = đã đặt, xám = đã qua giờ. Lịch KTV được lấy từ Google Sheet SCHEDULE.
     </div>
   </div>
 
@@ -422,23 +424,17 @@
   <script>
     const API_URL = 'https://script.google.com/macros/s/AKfycby10A8z8jNOcQ1NsLLEd9gDU4DSaygumSY4_U0P1NGv6OqJ8tPFbzSPAJCa8MBPdbCoIg/exec';
 
-    const therapists = [
-      { location: 'TTC', name: 'Đan', shift: 'Ca sáng', start: '10:00', end: '15:00', workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] },
-      { location: 'TTC', name: 'Phương', shift: 'Ca chiều', start: '15:00', end: '19:00', workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sun'] },
-      { location: 'VVO', name: 'Thạch', shift: 'Ca sáng', start: '10:00', end: '15:00', workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] },
-      { location: 'VVO', name: 'Duyên', shift: 'Ca chiều', start: '15:00', end: '19:00', workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sun'] }
-    ];
-
     let bookings = [];
+    let scheduleRows = [];
 
     document.addEventListener('DOMContentLoaded', function () {
       const today = new Date();
       document.getElementById('dateFilter').value = today.toISOString().split('T')[0];
 
-      document.getElementById('dateFilter').addEventListener('change', renderSchedule);
+      document.getElementById('dateFilter').addEventListener('change', loadData);
       document.getElementById('locationFilter').addEventListener('change', renderSchedule);
 
-      loadBookings();
+      loadData();
     });
 
     function jsonp(url) {
@@ -462,37 +458,88 @@
       });
     }
 
-    async function loadBookings() {
-      const schedule = document.getElementById('schedule');
-      schedule.innerHTML = '<div class="loading">Đang tải dữ liệu đặt lịch...</div>';
+    async function loadData() {
+      const date = document.getElementById('dateFilter').value;
+      const container = document.getElementById('schedule');
+
+      container.innerHTML = '<div class="loading">Đang tải dữ liệu đặt lịch...</div>';
 
       try {
-        const res = await jsonp(API_URL + '?action=list&v=' + Date.now());
+        const res = await jsonp(API_URL + '?action=list&date=' + encodeURIComponent(date) + '&v=' + Date.now());
 
-        if (res.success) {
-          bookings = res.bookings || [];
-          renderSchedule();
-        } else {
-          schedule.innerHTML = '<div class="loading">Lỗi: ' + (res.message || 'Không tải được dữ liệu') + '</div>';
+        if (!res.success) {
+          container.innerHTML = '<div class="loading">Lỗi: ' + (res.message || 'Không tải được dữ liệu') + '</div>';
+          return;
         }
+
+        bookings = res.bookings || [];
+        scheduleRows = res.schedule || [];
+
+        updateLocationFilter();
+        renderSchedule();
+
       } catch (err) {
-        schedule.innerHTML = '<div class="loading">Không kết nối được API. Vui lòng kiểm tra lại phần Deploy của Apps Script.</div>';
+        container.innerHTML = '<div class="loading">Không kết nối được API. Vui lòng kiểm tra lại phần Deploy của Apps Script.</div>';
+      }
+    }
+
+    function updateLocationFilter() {
+      const select = document.getElementById('locationFilter');
+      const current = select.value;
+
+      const locations = Array.from(new Set(scheduleRows.map(r => cleanText(r.location)).filter(Boolean)));
+
+      select.innerHTML = '<option value="ALL">Tất cả địa điểm</option>';
+
+      locations.forEach(function(loc) {
+        const option = document.createElement('option');
+        option.value = loc;
+        option.textContent = loc;
+        select.appendChild(option);
+      });
+
+      if (locations.includes(current)) {
+        select.value = current;
+      } else {
+        select.value = 'ALL';
       }
     }
 
     function renderSchedule() {
       const date = document.getElementById('dateFilter').value;
       const locationFilter = document.getElementById('locationFilter').value;
-      const schedule = document.getElementById('schedule');
+      const container = document.getElementById('schedule');
 
-      schedule.innerHTML = '';
+      container.innerHTML = '';
 
-      const locations = locationFilter === 'ALL' ? ['TTC', 'VVO'] : [locationFilter];
+      if (!scheduleRows.length) {
+        container.innerHTML = `
+          <div class="empty">
+            <strong>Chưa có lịch làm việc cho ngày ${date}.</strong><br>
+            Vui lòng cập nhật tab SCHEDULE trong Google Sheet.
+          </div>
+        `;
+        return;
+      }
+
+      const filtered = locationFilter === 'ALL'
+        ? scheduleRows
+        : scheduleRows.filter(r => cleanText(r.location) === cleanText(locationFilter));
+
+      if (!filtered.length) {
+        container.innerHTML = `
+          <div class="empty">
+            <strong>Không có lịch tại địa điểm này.</strong><br>
+            Vui lòng chọn địa điểm khác hoặc cập nhật SCHEDULE.
+          </div>
+        `;
+        return;
+      }
+
+      const locations = Array.from(new Set(filtered.map(r => cleanText(r.location))));
 
       locations.forEach(function(location) {
-        const locationTherapists = therapists.filter(function(t) {
-          return cleanText(t.location) === cleanText(location);
-        });
+        const rows = filtered.filter(r => cleanText(r.location) === cleanText(location));
 
         const card = document.createElement('section');
         card.className = 'location-card';
@@ -500,52 +547,36 @@
         card.innerHTML = `
           <h2>${location}</h2>
           <div class="therapist-grid">
-            ${locationTherapists.map(function(t) {
-              return renderTherapist(t, date);
+            ${rows.map(function(row) {
+              return renderTherapist(row, date);
             }).join('')}
           </div>
         `;
 
-        schedule.appendChild(card);
+        container.appendChild(card);
       });
     }
 
-    function renderTherapist(t, date) {
-      const day = getDayName(date);
-      const isWorking = t.workingDays.includes(day);
-
-      if (!isWorking) {
-        return `
-          <div class="therapist-card">
-            <h3>${t.name}</h3>
-            <div class="shift">${t.shift} | Ngày nghỉ</div>
-            <div class="slot off">
-              <strong>Không làm việc</strong>
-              <span class="status-pill">Không có lịch</span>
-            </div>
-          </div>
-        `;
-      }
-
-      const slots = generateSlots(t.start, t.end);
+    function renderTherapist(row, date) {
+      const slots = generateSlots(row.start, row.end, row.lunchBreak);
 
       return `
         <div class="therapist-card">
-          <h3>${t.name}</h3>
-          <div class="shift">${t.shift} | ${t.start} - ${t.end}</div>
+          <h3>${row.therapist}</h3>
+          <div class="shift">${row.note || 'Lịch làm việc'} | ${row.start} - ${row.end}</div>
           ${slots.map(function(slot) {
-            return renderSlot(t, date, slot);
+            return renderSlot(row, date, slot);
           }).join('')}
         </div>
       `;
     }
 
-    function renderSlot(t, date, slot) {
+    function renderSlot(row, date, slot) {
       const booking = bookings.find(function(b) {
         return normalizeDate(b.date) === date &&
-          cleanText(b.time) === cleanText(slot) &&
-          cleanText(b.location) === cleanText(t.location) &&
-          cleanText(b.therapist) === cleanText(t.name) &&
+          cleanTime(b.time) === cleanTime(slot) &&
+          cleanText(b.location) === cleanText(row.location) &&
+          cleanText(b.therapist) === cleanText(row.therapist) &&
           cleanText(b.status).toLowerCase() !== 'cancelled';
       });
 
@@ -569,9 +600,7 @@
       if (isPast) {
         return `
           <div class="slot closed">
-            <div>
-              <strong>${slot}</strong>
-            </div>
+            <strong>${slot}</strong>
             <span class="status-pill">Đã qua</span>
           </div>
         `;
@@ -580,80 +609,70 @@
       return `
         <div class="slot available">
           <strong>${slot}</strong>
-          <button onclick="openBookingModal('${date}', '${slot}', '${t.location}', '${t.name}')">
+          <button onclick="openBookingModal('${date}', '${slot}', '${row.location}', '${row.therapist}')">
             Đặt lịch
           </button>
         </div>
       `;
     }
 
-    function generateSlots(start, end) {
+    function generateSlots(start, end, lunchBreak) {
       const slots = [];
 
-      let startHour = parseInt(start.split(':')[0], 10);
-      const endHour = parseInt(end.split(':')[0], 10);
+      let startHour = Number(start.split(':')[0]);
+      const endHour = Number(end.split(':')[0]);
+
+      const lunch = cleanTime(lunchBreak || '');
 
       while (startHour < endHour) {
-        if (startHour === 12) {
+        const from = String(startHour).padStart(2, '0') + ':00';
+        const to = String(startHour + 1).padStart(2, '0') + ':00';
+        const slot = from + '-' + to;
+
+        if (lunch && cleanTime(slot) === lunch) {
           startHour++;
           continue;
         }
 
-        const from = String(startHour).padStart(2, '0') + ':00';
-        const to = String(startHour + 1).padStart(2, '0') + ':00';
-
-        slots.push(from + '-' + to);
-
+        slots.push(slot);
         startHour++;
       }
 
       return slots;
     }
 
-    function getDayName(dateString) {
-      const parts = dateString.split('-');
-      const date = new Date(parts[0], parts[1] - 1, parts[2]);
-      const dayIndex = date.getDay();
-
-      return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dayIndex];
-    }
-
     function normalizeDate(value) {
       if (!value) return '';
 
-      if (typeof value === 'string') {
-        const text = value.trim();
+      const text = String(value).trim();
 
-        if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
-        if (text.includes('T')) return text.split('T')[0];
+      if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+      if (text.includes('T')) return text.split('T')[0];
 
-        const parsed = new Date(text);
-        if (!isNaN(parsed.getTime())) return parsed.toISOString().split('T')[0];
+      const parsed = new Date(text);
+      if (!isNaN(parsed.getTime())) return parsed.toISOString().split('T')[0];
 
-        return text;
-      }
-
-      try {
-        return new Date(value).toISOString().split('T')[0];
-      } catch (e) {
-        return String(value);
-      }
+      return text;
     }
 
     function cleanText(value) {
-      return String(value || '').trim().normalize('NFC');
+      return String(value || '').trim().replace(/\s+/g, ' ').normalize('NFC');
+    }
+
+    function cleanTime(value) {
+      return String(value || '')
+        .trim()
+        .replace(/\s+/g, '')
+        .replace(/–/g, '-')
+        .replace(/—/g, '-')
+        .normalize('NFC');
     }
 
     function isPastSlot(date, slot) {
       const now = new Date();
 
-      const selectedDateParts = date.split('-');
-      const selectedDate = new Date(
-        Number(selectedDateParts[0]),
-        Number(selectedDateParts[1]) - 1,
-        Number(selectedDateParts[2])
-      );
-
+      const parts = date.split('-');
+      const selectedDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
       if (selectedDate < today) return true;
@@ -685,7 +704,7 @@
         'Ngày: ' + date + '\n' +
         'Giờ: ' + time + '\n' +
         'Địa điểm: ' + location + '\n' +
-        'Therapist: ' + therapist;
+        'KTV: ' + therapist;
 
       document.getElementById('bookingModal').style.display = 'flex';
     }
@@ -728,7 +747,7 @@
         if (res.success) {
           closeModal();
           clearForm();
-          await loadBookings();
+          await loadData();
         }
       } catch (err) {
         alert('Không gửi được booking. Vui lòng kiểm tra API.');
