@@ -377,7 +377,7 @@
     </main>
 
     <div class="notice">
-      Slot xanh = còn trống, slot xanh đậm = đã đặt. Ca sáng nghỉ trưa 12:00–13:00.
+      Slot xanh nhạt = còn trống, slot xanh đậm = đã đặt. Ca sáng nghỉ trưa 12:00–13:00.
     </div>
   </div>
 
@@ -400,17 +400,6 @@
       <div class="form-group">
         <label>Số điện thoại</label>
         <input id="phone" placeholder="Nhập số điện thoại" />
-      </div>
-
-      <div class="form-group">
-        <label>Dịch vụ</label>
-        <select id="service">
-          <option value="">Chọn dịch vụ</option>
-          <option value="ProPhysio">ProPhysio</option>
-          <option value="Phục hồi">Phục hồi</option>
-          <option value="Tư vấn">Tư vấn</option>
-          <option value="Khác">Khác</option>
-        </select>
       </div>
 
       <div class="form-group">
@@ -590,8 +579,7 @@
               <strong>${slot}</strong>
               <div class="booked-info">
                 ${booking.memberName || 'Đã đặt lịch'}<br>
-                ${booking.phone || ''}<br>
-                ${booking.service || ''}
+                ${booking.phone || ''}
               </div>
             </div>
             <span class="status-pill">Đã đặt</span>
@@ -716,7 +704,7 @@
         therapist: document.getElementById('selectedTherapist').value,
         memberName: memberName,
         phone: phone,
-        service: document.getElementById('service').value,
+        service: '',
         note: document.getElementById('note').value
       });
 
@@ -738,7 +726,6 @@
     function clearForm() {
       document.getElementById('memberName').value = '';
       document.getElementById('phone').value = '';
-      document.getElementById('service').value = '';
       document.getElementById('note').value = '';
     }
   </script>
