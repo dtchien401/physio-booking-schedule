@@ -21,8 +21,7 @@
     body {
       margin: 0;
       font-family: Arial, sans-serif;
-      background:
-        radial-gradient(circle at top left, rgba(90,167,255,0.9) 0%, rgba(238,246,255,0.95) 32%, #edf7ff 100%);
+      background: radial-gradient(circle at top left, rgba(90,167,255,0.9) 0%, rgba(238,246,255,0.95) 32%, #edf7ff 100%);
       color: var(--text);
       min-height: 100vh;
     }
@@ -223,6 +222,12 @@
       box-shadow: 0 8px 20px rgba(37,99,235,0.18);
     }
 
+    .closed {
+      background: #cbd5e1;
+      color: #475569;
+      opacity: 0.78;
+    }
+
     .off {
       background: #e2e8f0;
       color: #64748b;
@@ -377,7 +382,7 @@
     </main>
 
     <div class="notice">
-      Slot xanh nhạt = còn trống, slot xanh đậm = đã đặt. Ca sáng nghỉ trưa 12:00–13:00.
+      Slot xanh nhạt = còn trống, xanh đậm = đã đặt, xám = đã qua giờ. Ca sáng nghỉ trưa 12:00–13:00.
     </div>
   </div>
 
@@ -418,38 +423,10 @@
     const API_URL = 'https://script.google.com/macros/s/AKfycbxMjiFBsMsJxKWWIhRtYinZEAIpwOuBlkyEZayWRcVo7_2qmRjN2phCBr1MiBAga_wBcg/exec';
 
     const therapists = [
-      {
-        location: 'TTC',
-        name: 'Đan',
-        shift: 'Ca sáng',
-        start: '10:00',
-        end: '15:00',
-        workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-      },
-      {
-        location: 'TTC',
-        name: 'Phương',
-        shift: 'Ca chiều',
-        start: '15:00',
-        end: '19:00',
-        workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sun']
-      },
-      {
-        location: 'VVO',
-        name: 'Thạch',
-        shift: 'Ca sáng',
-        start: '10:00',
-        end: '15:00',
-        workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-      },
-      {
-        location: 'VVO',
-        name: 'Duyên',
-        shift: 'Ca chiều',
-        start: '15:00',
-        end: '19:00',
-        workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sun']
-      }
+      { location: 'TTC', name: 'Đan', shift: 'Ca sáng', start: '10:00', end: '15:00', workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] },
+      { location: 'TTC', name: 'Phương', shift: 'Ca chiều', start: '15:00', end: '19:00', workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sun'] },
+      { location: 'VVO', name: 'Thạch', shift: 'Ca sáng', start: '10:00', end: '15:00', workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] },
+      { location: 'VVO', name: 'Duyên', shift: 'Ca chiều', start: '15:00', end: '19:00', workingDays: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sun'] }
     ];
 
     let bookings = [];
@@ -572,6 +549,8 @@
           cleanText(b.status).toLowerCase() !== 'cancelled';
       });
 
+      const isPast = isPastSlot(date, slot);
+
       if (booking) {
         return `
           <div class="slot booked">
@@ -583,6 +562,17 @@
               </div>
             </div>
             <span class="status-pill">Đã đặt</span>
+          </div>
+        `;
+      }
+
+      if (isPast) {
+        return `
+          <div class="slot closed">
+            <div>
+              <strong>${slot}</strong>
+            </div>
+            <span class="status-pill">Đã qua</span>
           </div>
         `;
       }
@@ -634,18 +624,11 @@
       if (typeof value === 'string') {
         const text = value.trim();
 
-        if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
-          return text;
-        }
-
-        if (text.includes('T')) {
-          return text.split('T')[0];
-        }
+        if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+        if (text.includes('T')) return text.split('T')[0];
 
         const parsed = new Date(text);
-        if (!isNaN(parsed.getTime())) {
-          return parsed.toISOString().split('T')[0];
-        }
+        if (!isNaN(parsed.getTime())) return parsed.toISOString().split('T')[0];
 
         return text;
       }
@@ -658,9 +641,38 @@
     }
 
     function cleanText(value) {
-      return String(value || '')
-        .trim()
-        .normalize('NFC');
+      return String(value || '').trim().normalize('NFC');
+    }
+
+    function isPastSlot(date, slot) {
+      const now = new Date();
+
+      const selectedDateParts = date.split('-');
+      const selectedDate = new Date(
+        Number(selectedDateParts[0]),
+        Number(selectedDateParts[1]) - 1,
+        Number(selectedDateParts[2])
+      );
+
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+      if (selectedDate < today) return true;
+      if (selectedDate > today) return false;
+
+      const slotStart = slot.split('-')[0];
+      const hour = Number(slotStart.split(':')[0]);
+      const minute = Number(slotStart.split(':')[1]);
+
+      const slotDateTime = new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate(),
+        hour,
+        minute,
+        0
+      );
+
+      return slotDateTime < now;
     }
 
     function openBookingModal(date, time, location, therapist) {
