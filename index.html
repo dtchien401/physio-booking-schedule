@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <title>Therapist Booking Platform</title>
+  <title>Lịch Đặt Hẹn ProPhysio</title>
 
   <style>
     * { box-sizing: border-box; }
@@ -14,8 +14,6 @@
       --blue-800: #0f3ea8;
       --blue-600: #2563eb;
       --blue-400: #38bdf8;
-      --blue-300: #7dd3fc;
-      --sky-50: #eff6ff;
       --text: #1e293b;
       --muted: #64748b;
     }
@@ -47,11 +45,7 @@
     }
 
     header {
-      background:
-        linear-gradient(135deg,
-          #0b2f8f 0%,
-          #2563eb 45%,
-          #60a5fa 100%);
+      background: linear-gradient(135deg, #0b2f8f 0%, #2563eb 45%, #60a5fa 100%);
       color: white;
       padding: 30px;
       border-radius: 26px;
@@ -354,42 +348,42 @@
   <div class="app">
     <header>
       <div>
-        <h1>Therapist Booking Platform</h1>
-        <p>TTC & VVO booking / availability view</p>
+        <h1>Lịch Đặt Hẹn ProPhysio</h1>
+        <p>Theo dõi lịch trống và lịch đã đặt tại TTC & VVO</p>
       </div>
-      <div class="badge">60-min open slots</div>
+      <div class="badge">Mỗi slot 60 phút</div>
     </header>
 
     <section class="filters">
       <div>
-        <label>Ngày booking</label>
+        <label>Ngày đặt lịch</label>
         <input type="date" id="dateFilter" />
       </div>
 
       <div>
-        <label>Location</label>
+        <label>Địa điểm</label>
         <select id="locationFilter">
-          <option value="ALL">All Locations</option>
+          <option value="ALL">Tất cả địa điểm</option>
           <option value="TTC">TTC</option>
           <option value="VVO">VVO</option>
         </select>
       </div>
 
-      <button onclick="loadBookings()">Refresh</button>
+      <button onclick="loadBookings()">Làm mới</button>
     </section>
 
     <main id="schedule">
-      <div class="loading">Loading booking data...</div>
+      <div class="loading">Đang tải dữ liệu đặt lịch...</div>
     </main>
 
     <div class="notice">
-      Logic: slot xanh = Available, slot đỏ = Booked, mỗi booking block chuẩn 60 phút.
+      Slot xanh = còn trống, slot xanh đậm = đã đặt. Ca sáng nghỉ trưa 12:00–13:00.
     </div>
   </div>
 
   <div class="modal" id="bookingModal">
     <div class="modal-box">
-      <h2>New Booking</h2>
+      <h2>Tạo lịch đặt hẹn</h2>
 
       <input type="hidden" id="selectedDate" />
       <input type="hidden" id="selectedTime" />
@@ -399,34 +393,34 @@
       <div class="summary" id="bookingSummary"></div>
 
       <div class="form-group">
-        <label>Member Name</label>
+        <label>Tên hội viên</label>
         <input id="memberName" placeholder="Nhập tên hội viên" />
       </div>
 
       <div class="form-group">
-        <label>Phone</label>
+        <label>Số điện thoại</label>
         <input id="phone" placeholder="Nhập số điện thoại" />
       </div>
 
       <div class="form-group">
-        <label>Service</label>
+        <label>Dịch vụ</label>
         <select id="service">
           <option value="">Chọn dịch vụ</option>
           <option value="ProPhysio">ProPhysio</option>
-          <option value="Recovery">Recovery</option>
-          <option value="Consultation">Consultation</option>
-          <option value="Other">Other</option>
+          <option value="Phục hồi">Phục hồi</option>
+          <option value="Tư vấn">Tư vấn</option>
+          <option value="Khác">Khác</option>
         </select>
       </div>
 
       <div class="form-group">
-        <label>Note</label>
-        <textarea id="note" rows="3" placeholder="Ghi chú thêm"></textarea>
+        <label>Ghi chú</label>
+        <textarea id="note" rows="3" placeholder="Ghi chú thêm nếu có"></textarea>
       </div>
 
       <div class="modal-actions">
-        <button class="secondary" onclick="closeModal()">Cancel</button>
-        <button onclick="submitBooking()">Confirm Booking</button>
+        <button class="secondary" onclick="closeModal()">Huỷ</button>
+        <button onclick="submitBooking()">Xác nhận đặt lịch</button>
       </div>
     </div>
   </div>
@@ -495,7 +489,7 @@
         const separator = url.includes('?') ? '&' : '?';
         script.src = url + separator + 'callback=' + callback;
         script.onerror = function() {
-          reject(new Error('Cannot connect to Google Apps Script API'));
+          reject(new Error('Không thể kết nối API Google Apps Script'));
         };
 
         document.body.appendChild(script);
@@ -504,19 +498,19 @@
 
     async function loadBookings() {
       const schedule = document.getElementById('schedule');
-      schedule.innerHTML = '<div class="loading">Loading booking data...</div>';
+      schedule.innerHTML = '<div class="loading">Đang tải dữ liệu đặt lịch...</div>';
 
       try {
-        const res = await jsonp(API_URL + '?action=list');
+        const res = await jsonp(API_URL + '?action=list&v=' + Date.now());
 
         if (res.success) {
           bookings = res.bookings || [];
           renderSchedule();
         } else {
-          schedule.innerHTML = '<div class="loading">Error: ' + (res.message || 'Cannot load bookings') + '</div>';
+          schedule.innerHTML = '<div class="loading">Lỗi: ' + (res.message || 'Không tải được dữ liệu') + '</div>';
         }
       } catch (err) {
-        schedule.innerHTML = '<div class="loading">Cannot connect to API. Please check Apps Script deployment.</div>';
+        schedule.innerHTML = '<div class="loading">Không kết nối được API. Vui lòng kiểm tra lại phần Deploy của Apps Script.</div>';
       }
     }
 
@@ -531,7 +525,7 @@
 
       locations.forEach(function(location) {
         const locationTherapists = therapists.filter(function(t) {
-          return t.location === location;
+          return cleanText(t.location) === cleanText(location);
         });
 
         const card = document.createElement('section');
@@ -558,10 +552,10 @@
         return `
           <div class="therapist-card">
             <h3>${t.name}</h3>
-            <div class="shift">${t.shift} | Off day</div>
+            <div class="shift">${t.shift} | Ngày nghỉ</div>
             <div class="slot off">
-              <strong>Off</strong>
-              <span class="status-pill">Not Available</span>
+              <strong>Không làm việc</strong>
+              <span class="status-pill">Không có lịch</span>
             </div>
           </div>
         `;
@@ -583,10 +577,10 @@
     function renderSlot(t, date, slot) {
       const booking = bookings.find(function(b) {
         return normalizeDate(b.date) === date &&
-          b.time === slot &&
-          b.location === t.location &&
-          b.therapist === t.name &&
-          b.status !== 'Cancelled';
+          cleanText(b.time) === cleanText(slot) &&
+          cleanText(b.location) === cleanText(t.location) &&
+          cleanText(b.therapist) === cleanText(t.name) &&
+          cleanText(b.status).toLowerCase() !== 'cancelled';
       });
 
       if (booking) {
@@ -595,12 +589,12 @@
             <div>
               <strong>${slot}</strong>
               <div class="booked-info">
-                ${booking.memberName || 'Booked'}<br>
+                ${booking.memberName || 'Đã đặt lịch'}<br>
                 ${booking.phone || ''}<br>
                 ${booking.service || ''}
               </div>
             </div>
-            <span class="status-pill">Booked</span>
+            <span class="status-pill">Đã đặt</span>
           </div>
         `;
       }
@@ -609,7 +603,7 @@
         <div class="slot available">
           <strong>${slot}</strong>
           <button onclick="openBookingModal('${date}', '${slot}', '${t.location}', '${t.name}')">
-            Book
+            Đặt lịch
           </button>
         </div>
       `;
@@ -622,9 +616,6 @@
       const endHour = parseInt(end.split(':')[0], 10);
 
       while (startHour < endHour) {
-
-        // Ca sáng nghỉ trưa từ 12:00 đến 13:00
-        // Vì vậy hệ thống không tạo slot 12:00-13:00
         if (startHour === 12) {
           startHour++;
           continue;
@@ -632,7 +623,9 @@
 
         const from = String(startHour).padStart(2, '0') + ':00';
         const to = String(startHour + 1).padStart(2, '0') + ':00';
+
         slots.push(from + '-' + to);
+
         startHour++;
       }
 
@@ -643,6 +636,7 @@
       const parts = dateString.split('-');
       const date = new Date(parts[0], parts[1] - 1, parts[2]);
       const dayIndex = date.getDay();
+
       return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][dayIndex];
     }
 
@@ -650,17 +644,35 @@
       if (!value) return '';
 
       if (typeof value === 'string') {
-        if (value.includes('T')) {
-          return value.split('T')[0];
+        const text = value.trim();
+
+        if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+          return text;
         }
-        return value;
+
+        if (text.includes('T')) {
+          return text.split('T')[0];
+        }
+
+        const parsed = new Date(text);
+        if (!isNaN(parsed.getTime())) {
+          return parsed.toISOString().split('T')[0];
+        }
+
+        return text;
       }
 
       try {
         return new Date(value).toISOString().split('T')[0];
       } catch (e) {
-        return value;
+        return String(value);
       }
+    }
+
+    function cleanText(value) {
+      return String(value || '')
+        .trim()
+        .normalize('NFC');
     }
 
     function openBookingModal(date, time, location, therapist) {
@@ -670,9 +682,9 @@
       document.getElementById('selectedTherapist').value = therapist;
 
       document.getElementById('bookingSummary').innerText =
-        'Date: ' + date + '\\n' +
-        'Time: ' + time + '\\n' +
-        'Location: ' + location + '\\n' +
+        'Ngày: ' + date + '\n' +
+        'Giờ: ' + time + '\n' +
+        'Địa điểm: ' + location + '\n' +
         'Therapist: ' + therapist;
 
       document.getElementById('bookingModal').style.display = 'flex';
@@ -709,14 +721,14 @@
       });
 
       try {
-        const res = await jsonp(API_URL + '?' + params.toString());
+        const res = await jsonp(API_URL + '?' + params.toString() + '&v=' + Date.now());
 
-        alert(res.message || 'Done');
+        alert(res.message || 'Đã xử lý xong.');
 
         if (res.success) {
           closeModal();
           clearForm();
-          loadBookings();
+          await loadBookings();
         }
       } catch (err) {
         alert('Không gửi được booking. Vui lòng kiểm tra API.');
