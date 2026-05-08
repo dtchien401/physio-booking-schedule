@@ -622,6 +622,14 @@
       const endHour = parseInt(end.split(':')[0], 10);
 
       while (startHour < endHour) {
+
+        // Ca sáng nghỉ trưa từ 12:00 đến 13:00
+        // Vì vậy hệ thống không tạo slot 12:00-13:00
+        if (startHour === 12) {
+          startHour++;
+          continue;
+        }
+
         const from = String(startHour).padStart(2, '0') + ':00';
         const to = String(startHour + 1).padStart(2, '0') + ':00';
         slots.push(from + '-' + to);
