@@ -264,6 +264,18 @@
       font-size: 13px;
       line-height: 1.5;
       margin-top: 4px;
+      max-width: 100%;
+      word-break: break-word;
+    }
+
+    .booked-name {
+      font-weight: bold;
+      font-size: 14px;
+    }
+
+    .booked-note {
+      margin-top: 3px;
+      opacity: 0.95;
     }
 
     .status-pill {
@@ -615,8 +627,9 @@
             <div>
               <strong>${slot}</strong>
               <div class="booked-info">
-                ${booking.memberName || 'Đã đặt lịch'}<br>
-                ${booking.phone || ''}
+                <div class="booked-name">${escapeHtml(booking.memberName || 'Đã đặt lịch')}</div>
+                <div>${booking.phone ? '📞 ' + escapeHtml(booking.phone) : ''}</div>
+                ${booking.note ? '<div class="booked-note">📝 ' + escapeHtml(booking.note) + '</div>' : ''}
               </div>
             </div>
             <span class="status-pill">Đã đặt</span>
@@ -705,6 +718,15 @@
         .replace(/–/g, '-')
         .replace(/—/g, '-')
         .normalize('NFC');
+    }
+
+    function escapeHtml(value) {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
     }
 
     function isPastSlot(date, slot) {
