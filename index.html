@@ -278,6 +278,47 @@
       opacity: 0.95;
     }
 
+    .contract-box {
+      margin-top: 8px;
+      padding: 9px 10px;
+      border-radius: 14px;
+      background: rgba(255,255,255,0.18);
+      border: 1px solid rgba(255,255,255,0.28);
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+      max-width: 360px;
+    }
+
+    .contract-metric {
+      background: rgba(255,255,255,0.22);
+      border-radius: 12px;
+      padding: 7px 8px;
+      text-align: center;
+      line-height: 1.2;
+    }
+
+    .contract-metric span {
+      display: block;
+      font-size: 11px;
+      opacity: 0.92;
+      margin-bottom: 3px;
+    }
+
+    .contract-metric strong {
+      font-size: 15px;
+      color: #fff;
+    }
+
+    .contract-warning {
+      margin-top: 8px;
+      font-size: 12px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.22);
+      border: 1px solid rgba(255,255,255,0.28);
+    }
+
     .status-pill {
       font-size: 12px;
       font-weight: bold;
@@ -423,7 +464,7 @@
     </main>
 
     <div class="notice">
-      Slot xanh nhạt = còn trống, xanh đậm = đã đặt, xám = đã qua giờ. Lịch KTV được lấy từ Google Sheet SCHEDULE.
+      Slot xanh nhạt = còn trống, xanh đậm = đã đặt, xám = đã qua giờ. Khi đã đặt, hệ thống map SĐT với sheet contract để hiện Gói / Đã dùng / Còn lại.
     </div>
   </div>
 
@@ -465,6 +506,7 @@
 
     let bookings = [];
     let scheduleRows = [];
+    let contracts = [];
 
     document.addEventListener('DOMContentLoaded', function () {
       const today = new Date();
@@ -513,6 +555,7 @@
 
         bookings = res.bookings || [];
         scheduleRows = res.schedule || [];
+        contracts = res.contracts || res.contract || [];
 
         updateLocationFilter();
         renderSchedule();
@@ -622,13 +665,17 @@
       const isPast = isPastSlot(date, slot);
 
       if (booking) {
+        const contract = findContractByPhone(booking.phone);
+        const contractHtml = renderContractInfo(contract, booking.phone);
+
         return `
           <div class="slot booked">
             <div>
               <strong>${slot}</strong>
               <div class="booked-info">
-                <div class="booked-name">${escapeHtml(booking.memberName || 'Đã đặt lịch')}</div>
+                <div class="booked-name">${escapeHtml(booking.memberName || contract?.memberName || 'Đã đặt lịch')}</div>
                 <div>${booking.phone ? '📞 ' + escapeHtml(booking.phone) : ''}</div>
+                ${contractHtml}
                 ${booking.note ? '<div class="booked-note">📝 ' + escapeHtml(booking.note) + '</div>' : ''}
               </div>
             </div>
@@ -679,6 +726,94 @@
       }
 
       return slots;
+    }
+
+    function normalizePhone(phone) {
+      let p = String(phone || '').replace(/\D/g, '');
+
+      // Convert Vietnam format 84xxxxxxxxx to 0xxxxxxxxx
+      if (p.startsWith('84') && p.length >= 11) {
+        p = '0' + p.slice(2);
+      }
+
+      return p;
+    }
+
+    function pickValue(obj, keys, fallback) {
+      if (!obj) return fallback || '';
+
+      for (const key of keys) {
+        if (obj[key] !== undefined && obj[key] !== null && String(obj[key]).trim() !== '') {
+          return obj[key];
+        }
+      }
+
+      return fallback || '';
+    }
+
+    function toNumber(value) {
+      const n = Number(String(value || '0').replace(/,/g, '').trim());
+      return isNaN(n) ? 0 : n;
+    }
+
+    function normalizeContract(raw) {
+      if (!raw) return null;
+
+      const total = toNumber(pickValue(raw, ['totalSessions', 'serviceQuantity', 'Service Quantity', 'quantity'], 0));
+      const remain = toNumber(pickValue(raw, ['remainingSessions', 'serviceRemain', 'Service Remain', 'remain'], 0));
+      const usedRaw = pickValue(raw, ['usedSessions', 'used', 'Used'], '');
+      const used = usedRaw === '' ? Math.max(total - remain, 0) : toNumber(usedRaw);
+
+      return {
+        phone: pickValue(raw, ['phone', 'Phone number', 'Phone Number', 'phoneNumber'], ''),
+        memberName: pickValue(raw, ['memberName', 'Full Name (S + G) (Client) (Client)', 'Full Name', 'name'], ''),
+        contractNumber: pickValue(raw, ['contractNumber', 'Contract Number'], ''),
+        totalSessions: total,
+        usedSessions: used,
+        remainingSessions: remain,
+        status: pickValue(raw, ['status', 'Payment Status'], '')
+      };
+    }
+
+    function findContractByPhone(phone) {
+      const targetPhone = normalizePhone(phone);
+      if (!targetPhone) return null;
+
+      const activeContracts = (contracts || [])
+        .map(normalizeContract)
+        .filter(Boolean)
+        .filter(c => normalizePhone(c.phone) === targetPhone);
+
+      if (!activeContracts.length) return null;
+
+      // If a client has multiple contracts, show the one with remaining sessions first.
+      activeContracts.sort((a, b) => b.remainingSessions - a.remainingSessions);
+      return activeContracts[0];
+    }
+
+    function renderContractInfo(contract, phone) {
+      if (!phone) return '';
+
+      if (!contract) {
+        return '<div class="contract-warning">⚠️ Chưa tìm thấy hợp đồng theo SĐT</div>';
+      }
+
+      return `
+        <div class="contract-box" title="${escapeHtml(contract.contractNumber || '')}">
+          <div class="contract-metric">
+            <span>Gói</span>
+            <strong>${escapeHtml(contract.totalSessions)}</strong>
+          </div>
+          <div class="contract-metric">
+            <span>Đã dùng</span>
+            <strong>${escapeHtml(contract.usedSessions)}</strong>
+          </div>
+          <div class="contract-metric">
+            <span>Còn lại</span>
+            <strong>${escapeHtml(contract.remainingSessions)}</strong>
+          </div>
+        </div>
+      `;
     }
 
     function normalizeDate(value) {
