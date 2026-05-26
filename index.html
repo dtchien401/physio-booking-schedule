@@ -731,12 +731,13 @@
     function normalizePhone(phone) {
       let p = String(phone || '').replace(/\D/g, '');
 
-      // Convert Vietnam format 84xxxxxxxxx to 0xxxxxxxxx
+      // Map by last 9 digits so these formats still match:
+      // 0903312168, +84903312168, 84903312168, 903312168, 0903 312 168
       if (p.startsWith('84') && p.length >= 11) {
-        p = '0' + p.slice(2);
+        p = p.slice(2);
       }
 
-      return p;
+      return p.slice(-9);
     }
 
     function pickValue(obj, keys, fallback) {
@@ -782,7 +783,16 @@
       const activeContracts = (contracts || [])
         .map(normalizeContract)
         .filter(Boolean)
-        .filter(c => normalizePhone(c.phone) === targetPhone);
+        .filter(c => {
+          const contractPhone = normalizePhone(c.phone);
+          return contractPhone && (
+            contractPhone === targetPhone ||
+            contractPhone.endsWith(targetPhone) ||
+            targetPhone.endsWith(contractPhone)
+          );
+        });
+
+      console.log('BOOKING PHONE MAP:', phone, '=>', targetPhone, 'MATCHES:', activeContracts);
 
       if (!activeContracts.length) return null;
 
