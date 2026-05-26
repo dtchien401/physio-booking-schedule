@@ -504,6 +504,11 @@
   <script>
     const API_URL = 'https://script.google.com/macros/s/AKfycbxGSuZ1ZzaTeZqo3zxqZhU6un0_q2fSTnxLMshAbxElojbiOaSc0TzIWPsn3M0L4pGqww/exec';
 
+    // contract.csv is stored in the same GitHub Pages repo as this index.html.
+    // If you open the HTML locally, fallbackRawUrl will still help during testing.
+    const CONTRACT_CSV_URL = 'contract.csv';
+    const CONTRACT_CSV_FALLBACK_URL = 'https://raw.githubusercontent.com/dtchien401/physio-booking-schedule/main/contract.csv';
+
     let bookings = [];
     let scheduleRows = [];
     let contracts = [];
@@ -539,6 +544,101 @@
       });
     }
 
+
+    async function loadContractsFromCSV() {
+      try {
+        const csvText = await fetchCSVText(CONTRACT_CSV_URL);
+        const rows = parseCSV(csvText);
+        console.log('Loaded contract.csv from same repo:', rows.length);
+        return rows;
+      } catch (err) {
+        console.warn('Cannot load local contract.csv, trying fallback raw GitHub URL:', err.message);
+      }
+
+      try {
+        const csvText = await fetchCSVText(CONTRACT_CSV_FALLBACK_URL);
+        const rows = parseCSV(csvText);
+        console.log('Loaded contract.csv from fallback raw GitHub:', rows.length);
+        return rows;
+      } catch (err) {
+        console.warn('Cannot load contract.csv:', err.message);
+        return [];
+      }
+    }
+
+    async function fetchCSVText(url) {
+      const response = await fetch(url + (url.includes('?') ? '&' : '?') + 'v=' + Date.now(), {
+        cache: 'no-store'
+      });
+
+      if (!response.ok) {
+        throw new Error('HTTP ' + response.status + ' when loading ' + url);
+      }
+
+      return await response.text();
+    }
+
+    function parseCSV(csvText) {
+      const text = String(csvText || '').replace(/^﻿/, '');
+      const rows = [];
+      let row = [];
+      let cell = '';
+      let inQuotes = false;
+
+      for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        const nextChar = text[i + 1];
+
+        if (char === '"') {
+          if (inQuotes && nextChar === '"') {
+            cell += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+          continue;
+        }
+
+        if (char === ',' && !inQuotes) {
+          row.push(cell);
+          cell = '';
+          continue;
+        }
+
+        if ((char === '
+' || char === '') && !inQuotes) {
+          if (char === '' && nextChar === '
+') i++;
+          row.push(cell);
+          rows.push(row);
+          row = [];
+          cell = '';
+          continue;
+        }
+
+        cell += char;
+      }
+
+      if (cell !== '' || row.length) {
+        row.push(cell);
+        rows.push(row);
+      }
+
+      if (!rows.length) return [];
+
+      const headers = rows[0].map(h => cleanText(h).replace(/^﻿/, ''));
+
+      return rows.slice(1)
+        .filter(r => r.some(c => String(c || '').trim() !== ''))
+        .map(r => {
+          const obj = {};
+          headers.forEach((h, i) => {
+            obj[h] = r[i] === undefined ? '' : r[i];
+          });
+          return obj;
+        });
+    }
+
     async function loadData() {
       const date = document.getElementById('dateFilter').value;
       const container = document.getElementById('schedule');
@@ -555,7 +655,17 @@
 
         bookings = res.bookings || [];
         scheduleRows = res.schedule || [];
+
+        // Prefer contracts returned by Apps Script if available.
+        // If not available, read contract.csv directly from GitHub Pages.
         contracts = res.contracts || res.contract || [];
+        if (!contracts.length) {
+          contracts = await loadContractsFromCSV();
+        }
+
+        console.log('Loaded bookings:', bookings.length);
+        console.log('Loaded schedule rows:', scheduleRows.length);
+        console.log('Loaded contracts:', contracts.length);
 
         updateLocationFilter();
         renderSchedule();
