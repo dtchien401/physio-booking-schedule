@@ -651,8 +651,18 @@
           return;
         }
 
-        bookings = res.bookings || [];
-        scheduleRows = res.schedule || [];
+        bookings = (res.bookings || [])
+          .map(normalizeBookingRow)
+          .filter(function(row) {
+            return !date || normalizeDate(row.date) === date;
+          });
+
+        scheduleRows = (res.schedule || [])
+          .map(normalizeScheduleRow)
+          .filter(function(row) {
+            const isActive = !row.active || cleanText(row.active).toLowerCase() !== 'no';
+            return isActive && (!date || normalizeDate(row.date) === date);
+          });
 
         // Prefer contracts returned by Apps Script if available.
         // If not available, read contract.csv directly from GitHub Pages.
@@ -865,11 +875,43 @@
       return isNaN(n) ? 0 : n;
     }
 
+    function extractTime(value) {
+      const text = String(value || '').trim();
+      const match = text.match(/(\d{1,2}:\d{2})(?::\d{2})?/);
+      return match ? match[1].padStart(5, '0') : text;
+    }
+
+    function normalizeBookingRow(raw) {
+      return {
+        bookingId: pickValue(raw, ['bookingId', 'Booking ID'], ''),
+        date: pickValue(raw, ['date', 'Date', 'Booking Date', 'Ngày'], ''),
+        time: pickValue(raw, ['time', 'Time', 'Slot', 'Giờ'], ''),
+        location: pickValue(raw, ['location', 'Location', 'Club', 'Địa điểm'], ''),
+        therapist: pickValue(raw, ['therapist', 'Therapist', 'KTV'], ''),
+        memberName: pickValue(raw, ['memberName', 'Member Name', 'Full Name', 'Tên hội viên'], ''),
+        phone: pickValue(raw, ['phone', 'Phone', 'Phone number', 'Phone Number', 'SĐT'], ''),
+        service: pickValue(raw, ['service', 'Service'], ''),
+        status: pickValue(raw, ['status', 'Status'], ''),
+        note: pickValue(raw, ['note', 'Note', 'Ghi chú'], '')
+      };
+    }
+
+    function normalizeScheduleRow(raw) {
+      return {
+        date: pickValue(raw, ['date', 'Date', 'Working Date', 'Ngày'], ''),
+        location: pickValue(raw, ['location', 'Location', 'Club', 'Địa điểm'], ''),
+        therapist: pickValue(raw, ['therapist', 'Therapist', 'KTV'], ''),
+        start: extractTime(pickValue(raw, ['start', 'Start', 'Start Time'], '')),
+        end: extractTime(pickValue(raw, ['end', 'End', 'End Time'], '')),
+        lunchBreak: pickValue(raw, ['lunchBreak', 'Lunch Break', 'Break'], ''),
+        active: pickValue(raw, ['active', 'Active'], ''),
+        note: pickValue(raw, ['note', 'Note'], '')
+      };
+    }
+
     function normalizeContract(raw) {
       if (!raw) return null;
 
-      // Ưu tiên đúng tên cột từ sheet contract / API:
-      // Service Quantity, used, Service Remain
       const total = toNumber(
         pickValue(raw, [
           'Service Quantity',
@@ -887,14 +929,14 @@
         ], 0)
       );
 
-      const remain = toNumber(
-        pickValue(raw, [
-          'Service Remain',
-          'remainingSessions',
-          'serviceRemain',
-          'remain'
-        ], 0)
-      );
+      const remainRaw = pickValue(raw, [
+        'Service Remain',
+        'remainingSessions',
+        'serviceRemain',
+        'remain'
+      ], '');
+
+      const remain = remainRaw === '' ? Math.max(total - used, 0) : toNumber(remainRaw);
 
       return {
         phone: pickValue(raw, [
@@ -903,23 +945,19 @@
           'phone',
           'phoneNumber'
         ], ''),
-
         memberName: pickValue(raw, [
           'Full Name (S + G) (Client) (Client)',
           'Full Name',
           'memberName',
           'name'
         ], ''),
-
         contractNumber: pickValue(raw, [
           'Contract Number',
           'contractNumber'
         ], ''),
-
         totalSessions: total,
         usedSessions: used,
         remainingSessions: remain,
-
         status: pickValue(raw, [
           'Payment Status',
           'status'
