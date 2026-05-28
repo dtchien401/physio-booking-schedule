@@ -502,7 +502,7 @@
   </div>
 
   <script>
-    const API_URL = 'https://script.google.com/macros/s/AKfycbxGSuZ1ZzaTeZqo3zxqZhU6un0_q2fSTnxLMshAbxElojbiOaSc0TzIWPsn3M0L4pGqww/exec';
+    const API_URL = 'https://script.google.com/macros/s/AKfycbyiGNR2_EcXLLvwSU16T2-o2ibxRIElMza_JYr5xokGEnUNeia1W6VpOXJ4VUiDBW4Alg/exec';
 
     // contract.csv is stored in the same GitHub Pages repo as this index.html.
     // If you open the HTML locally, fallbackRawUrl will still help during testing.
@@ -868,19 +868,62 @@
     function normalizeContract(raw) {
       if (!raw) return null;
 
-      const total = toNumber(pickValue(raw, ['totalSessions', 'serviceQuantity', 'Service Quantity', 'quantity'], 0));
-      const remain = toNumber(pickValue(raw, ['remainingSessions', 'serviceRemain', 'Service Remain', 'remain'], 0));
-      const usedRaw = pickValue(raw, ['usedSessions', 'used', 'Used'], '');
-      const used = usedRaw === '' ? Math.max(total - remain, 0) : toNumber(usedRaw);
+      // Ưu tiên đúng tên cột từ sheet contract / API:
+      // Service Quantity, used, Service Remain
+      const total = toNumber(
+        pickValue(raw, [
+          'Service Quantity',
+          'serviceQuantity',
+          'totalSessions',
+          'quantity'
+        ], 0)
+      );
+
+      const used = toNumber(
+        pickValue(raw, [
+          'used',
+          'Used',
+          'usedSessions'
+        ], 0)
+      );
+
+      const remain = toNumber(
+        pickValue(raw, [
+          'Service Remain',
+          'remainingSessions',
+          'serviceRemain',
+          'remain'
+        ], 0)
+      );
 
       return {
-        phone: pickValue(raw, ['phone', 'Phone number', 'Phone Number', 'phoneNumber'], ''),
-        memberName: pickValue(raw, ['memberName', 'Full Name (S + G) (Client) (Client)', 'Full Name', 'name'], ''),
-        contractNumber: pickValue(raw, ['contractNumber', 'Contract Number'], ''),
+        phone: pickValue(raw, [
+          'Phone number',
+          'Phone Number',
+          'phone',
+          'phoneNumber'
+        ], ''),
+
+        memberName: pickValue(raw, [
+          'Full Name (S + G) (Client) (Client)',
+          'Full Name',
+          'memberName',
+          'name'
+        ], ''),
+
+        contractNumber: pickValue(raw, [
+          'Contract Number',
+          'contractNumber'
+        ], ''),
+
         totalSessions: total,
         usedSessions: used,
         remainingSessions: remain,
-        status: pickValue(raw, ['status', 'Payment Status'], '')
+
+        status: pickValue(raw, [
+          'Payment Status',
+          'status'
+        ], '')
       };
     }
 
