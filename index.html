@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <title>Lịch Đặt Hẹn ProPhysio</title>
+  <title>Lịch Đặt Hẹn ProPhysio | Code Booking</title>
 
   <style>
     * { box-sizing: border-box; }
@@ -405,6 +405,83 @@
       border-radius: 999px;
     }
 
+
+
+    .mode-tabs {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+
+    .mode-tab {
+      background: rgba(255,255,255,0.92);
+      color: #0f3ea8;
+      border: 1px solid rgba(96,165,250,0.26);
+      box-shadow: 0 8px 22px rgba(37,99,235,0.08);
+    }
+
+    .mode-tab.active {
+      background: linear-gradient(135deg, #2563eb, #38bdf8);
+      color: white;
+    }
+
+    .access-panel {
+      background: rgba(255,255,255,0.92);
+      backdrop-filter: blur(10px);
+      padding: 18px;
+      border-radius: 20px;
+      margin-bottom: 16px;
+      box-shadow: 0 10px 30px rgba(37,99,235,0.08);
+      border: 1px solid rgba(96,165,250,0.18);
+    }
+
+    .access-grid {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: end;
+    }
+
+    .admin-login-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr auto;
+      gap: 12px;
+      align-items: end;
+    }
+
+    .access-message {
+      margin-top: 10px;
+      color: #475569;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .access-message.success {
+      color: #047857;
+      font-weight: bold;
+    }
+
+    .access-message.error {
+      color: #b91c1c;
+      font-weight: bold;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .soft-warning {
+      background: #fff7ed;
+      color: #9a3412;
+      border: 1px solid #fed7aa;
+      padding: 12px 14px;
+      border-radius: 16px;
+      margin-bottom: 16px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
     @media (max-width: 768px) {
       header {
         flex-direction: column;
@@ -416,6 +493,11 @@
       }
 
       .filters {
+        grid-template-columns: 1fr;
+      }
+
+      .access-grid,
+      .admin-login-grid {
         grid-template-columns: 1fr;
       }
 
@@ -443,6 +525,43 @@
       <div class="badge">Mỗi slot 60 phút</div>
     </header>
 
+    <section class="mode-tabs">
+      <button id="codeTabBtn" class="mode-tab active" onclick="switchMode('code')">Book bằng Code</button>
+      <button id="adminTabBtn" class="mode-tab hidden" onclick="switchMode('admin')">Booking thường</button>
+      <button id="adminLoginToggle" class="mode-tab" onclick="toggleAdminLogin()">Admin Login</button>
+      <button id="adminLogoutBtn" class="mode-tab hidden" onclick="logoutAdmin()">Đăng xuất Admin</button>
+    </section>
+
+    <section id="codeAccessPanel" class="access-panel">
+      <div class="access-grid">
+        <div>
+          <label>Mã booking</label>
+          <input id="bookingCodeInput" placeholder="Nhập code được cấp" />
+        </div>
+        <button onclick="verifyBookingCode()">Xác nhận code</button>
+      </div>
+      <div id="codeMessage" class="access-message">
+        Vui lòng nhập code được cấp. Hệ thống sẽ kiểm tra code trong sheet Code, cột A. Mỗi code được book tối đa 2 lần.
+      </div>
+    </section>
+
+    <section id="adminLoginPanel" class="access-panel hidden">
+      <div class="admin-login-grid">
+        <div>
+          <label>User</label>
+          <input id="adminUser" placeholder="admin" autocomplete="username" />
+        </div>
+        <div>
+          <label>Password</label>
+          <input id="adminPassword" type="password" placeholder="Password" autocomplete="current-password" />
+        </div>
+        <button onclick="loginAdmin()">Đăng nhập</button>
+      </div>
+      <div id="adminMessage" class="access-message">
+        Admin mới được dùng booking thường và xem thông tin chi tiết khách hàng.
+      </div>
+    </section>
+
     <section class="filters">
       <div>
         <label>Ngày đặt lịch</label>
@@ -459,12 +578,16 @@
       <button onclick="loadData()">Làm mới</button>
     </section>
 
+    <div id="modeWarning" class="soft-warning">
+      Chế độ khách: chỉ hiển thị slot còn trống / đã kín. Thông tin khách khác được ẩn để tránh nhầm lẫn và bảo mật dữ liệu.
+    </div>
+
     <main id="schedule">
       <div class="loading">Đang tải dữ liệu đặt lịch...</div>
     </main>
 
-    <div class="notice">
-      Slot xanh nhạt = còn trống, xanh đậm = đã đặt, xám = đã qua giờ. Khi đã đặt, hệ thống map SĐT với sheet contract để hiện Gói / Đã dùng / Còn lại.
+    <div class="notice" id="pageNotice">
+      Slot xanh nhạt = còn trống, xanh đậm = đã đặt/kín, xám = đã qua giờ. Admin login để dùng booking thường và xem chi tiết khách hàng.
     </div>
   </div>
 
@@ -512,6 +635,10 @@
     let bookings = [];
     let scheduleRows = [];
     let contracts = [];
+    let currentMode = 'code';
+    let isAdminLoggedIn = false;
+    let verifiedBookingCode = null;
+    let verifiedCodeMeta = null;
 
     document.addEventListener('DOMContentLoaded', function () {
       const today = new Date();
@@ -519,9 +646,130 @@
 
       document.getElementById('dateFilter').addEventListener('change', loadData);
       document.getElementById('locationFilter').addEventListener('change', renderSchedule);
+      document.getElementById('bookingCodeInput').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') verifyBookingCode();
+      });
+      document.getElementById('adminPassword').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') loginAdmin();
+      });
 
+      updateModeUI();
       loadData();
     });
+
+    function switchMode(mode) {
+      if (mode === 'admin' && !isAdminLoggedIn) {
+        toggleAdminLogin();
+        setAdminMessage('Vui lòng đăng nhập admin trước khi dùng booking thường.', 'error');
+        return;
+      }
+
+      currentMode = mode;
+      updateModeUI();
+      renderSchedule();
+    }
+
+    function updateModeUI() {
+      const isCode = currentMode === 'code';
+      const isAdmin = currentMode === 'admin';
+
+      document.getElementById('codeTabBtn').classList.toggle('active', isCode);
+      document.getElementById('adminTabBtn').classList.toggle('active', isAdmin);
+      document.getElementById('adminTabBtn').classList.toggle('hidden', !isAdminLoggedIn);
+      document.getElementById('adminLogoutBtn').classList.toggle('hidden', !isAdminLoggedIn);
+      document.getElementById('adminLoginToggle').classList.toggle('hidden', isAdminLoggedIn);
+      document.getElementById('codeAccessPanel').classList.toggle('hidden', !isCode);
+      document.getElementById('modeWarning').classList.toggle('hidden', isAdmin);
+
+      const notice = document.getElementById('pageNotice');
+      if (notice) {
+        notice.innerText = isAdmin
+          ? 'Admin mode: slot xanh nhạt = còn trống, xanh đậm = đã đặt, xám = đã qua giờ. Khi đã đặt, hệ thống map SĐT với sheet contract để hiện Gói / Đã dùng / Còn lại.'
+          : 'Customer mode: slot xanh nhạt = còn trống, xanh đậm = đã kín, xám = đã qua giờ. Code được kiểm tra từ sheet Code, cột A.';
+      }
+    }
+
+    function toggleAdminLogin() {
+      document.getElementById('adminLoginPanel').classList.toggle('hidden');
+    }
+
+    function setAdminMessage(message, type) {
+      const el = document.getElementById('adminMessage');
+      el.className = 'access-message ' + (type || '');
+      el.innerText = message;
+    }
+
+    function setCodeMessage(message, type) {
+      const el = document.getElementById('codeMessage');
+      el.className = 'access-message ' + (type || '');
+      el.innerText = message;
+    }
+
+    function loginAdmin() {
+      const user = document.getElementById('adminUser').value.trim();
+      const password = document.getElementById('adminPassword').value;
+
+      if (user === 'admin' && password === 'CaliLife') {
+        isAdminLoggedIn = true;
+        currentMode = 'admin';
+        document.getElementById('adminLoginPanel').classList.add('hidden');
+        document.getElementById('adminPassword').value = '';
+        setAdminMessage('Đăng nhập thành công.', 'success');
+        updateModeUI();
+        renderSchedule();
+        return;
+      }
+
+      setAdminMessage('Sai user hoặc password.', 'error');
+    }
+
+    function logoutAdmin() {
+      isAdminLoggedIn = false;
+      currentMode = 'code';
+      updateModeUI();
+      renderSchedule();
+    }
+
+    async function verifyBookingCode() {
+      const code = cleanText(document.getElementById('bookingCodeInput').value); // Validate against Google Sheet tab "Code", column A
+      verifiedBookingCode = null;
+      verifiedCodeMeta = null;
+
+      if (!code) {
+        setCodeMessage('Vui lòng nhập code.', 'error');
+        renderSchedule();
+        return;
+      }
+
+      setCodeMessage('Đang kiểm tra code...', '');
+
+      try {
+        const res = await jsonp(API_URL + '?action=verifyCode&code=' + encodeURIComponent(code) + '&v=' + Date.now());
+
+        if (!res.success) {
+          setCodeMessage(res.message || 'Code không hợp lệ hoặc đã hết lượt booking.', 'error');
+          renderSchedule();
+          return;
+        }
+
+        // Apps Script returns usage info from sheet Code column A + BOOKINGS Booking Code column.
+        verifiedBookingCode = cleanText(res.code || code);
+        verifiedCodeMeta = res || {};
+
+        const remaining = pickValue(verifiedCodeMeta, ['remaining', 'Remaining', 'remainingUses'], '');
+        const used = pickValue(verifiedCodeMeta, ['used', 'Used', 'usedCount'], '');
+        const group = pickValue(verifiedCodeMeta, ['customerGroup', 'Customer Group', 'group'], '');
+        const usedText = used !== '' ? ' Đã dùng: ' + used + '/2.' : '';
+        const remainingText = remaining !== '' ? ' Còn lại: ' + remaining + ' lượt.' : '';
+        const groupText = group ? ' Nhóm: ' + group + '.' : '';
+
+        setCodeMessage('Code hợp lệ.' + groupText + usedText + remainingText + ' Vui lòng chọn slot để đặt lịch.', 'success');
+        renderSchedule();
+      } catch (err) {
+        setCodeMessage('Không kiểm tra được code. Cần update Apps Script action=verifyCode để đọc sheet Code, cột A.', 'error');
+        renderSchedule();
+      }
+    }
 
     function jsonp(url) {
       return new Promise(function(resolve, reject) {
@@ -783,6 +1031,18 @@
       const isPast = isPastSlot(date, slot);
 
       if (booking) {
+        if (currentMode !== 'admin') {
+          return `
+            <div class="slot booked">
+              <div>
+                <strong>${slot}</strong>
+                <div class="booked-info">Slot này đã kín</div>
+              </div>
+              <span class="status-pill">Đã kín</span>
+            </div>
+          `;
+        }
+
         const contract = findContractByPhone(booking.phone);
         const contractHtml = renderContractInfo(contract, booking.phone);
 
@@ -811,12 +1071,16 @@
         `;
       }
 
+      const canBook = currentMode === 'admin' || !!verifiedBookingCode;
+      const buttonLabel = currentMode === 'admin' ? 'Đặt lịch' : (verifiedBookingCode ? 'Đặt bằng code' : 'Nhập code trước');
+      const buttonHtml = canBook
+        ? `<button onclick="openBookingModal('${date}', '${slot}', '${row.location}', '${row.therapist}')">${buttonLabel}</button>`
+        : `<button class="secondary" onclick="setCodeMessage('Vui lòng nhập và xác nhận code trước khi chọn slot.', 'error')">${buttonLabel}</button>`;
+
       return `
         <div class="slot available">
           <strong>${slot}</strong>
-          <button onclick="openBookingModal('${date}', '${slot}', '${row.location}', '${row.therapist}')">
-            Đặt lịch
-          </button>
+          ${buttonHtml}
         </div>
       `;
     }
@@ -1090,12 +1354,18 @@
     }
 
     function openBookingModal(date, time, location, therapist) {
+      if (currentMode === 'code' && !verifiedBookingCode) {
+        setCodeMessage('Vui lòng nhập và xác nhận code trước khi đặt lịch.', 'error');
+        return;
+      }
+
       document.getElementById('selectedDate').value = date;
       document.getElementById('selectedTime').value = time;
       document.getElementById('selectedLocation').value = location;
       document.getElementById('selectedTherapist').value = therapist;
 
       document.getElementById('bookingSummary').innerText =
+        'Chế độ: ' + (currentMode === 'admin' ? 'Booking thường / Admin' : 'Book bằng code ' + verifiedBookingCode) + '\n' +
         'Ngày: ' + date + '\n' +
         'Giờ: ' + time + '\n' +
         'Địa điểm: ' + location + '\n' +
@@ -1122,6 +1392,11 @@
         return;
       }
 
+      if (currentMode === 'code' && !verifiedBookingCode) {
+        alert('Vui lòng xác nhận code trước khi đặt lịch.');
+        return;
+      }
+
       const params = new URLSearchParams({
         action: 'book',
         date: document.getElementById('selectedDate').value,
@@ -1131,6 +1406,10 @@
         memberName: memberName,
         phone: phone,
         service: '',
+        status: 'booked',
+        bookingSource: currentMode === 'admin' ? 'Admin Booking' : 'Code Booking',
+        bookingCode: currentMode === 'code' ? verifiedBookingCode : '',
+        customerGroup: currentMode === 'code' ? pickValue(verifiedCodeMeta, ['customerGroup', 'Customer Group', 'group'], '') : '',
         note: document.getElementById('note').value
       });
 
@@ -1142,6 +1421,11 @@
         if (res.success) {
           closeModal();
           clearForm();
+          if (currentMode === 'code' && verifiedBookingCode) {
+            setCodeMessage('Đặt lịch thành công. Hệ thống đã ghi nhận lượt sử dụng cho code ' + verifiedBookingCode + '.', 'success');
+            // Re-check usage so the screen shows updated remaining count from BOOKINGS.
+            await verifyBookingCode();
+          }
           await loadData();
         }
       } catch (err) {
