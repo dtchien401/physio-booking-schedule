@@ -640,7 +640,15 @@
     let verifiedBookingCode = null;
     let verifiedCodeMeta = null;
 
+    const ADMIN_SESSION_KEY = 'physio_admin_loggedin';
+
     document.addEventListener('DOMContentLoaded', function () {
+      // Giữ trạng thái Admin Login sau khi refresh / mở lại trình duyệt.
+      if (localStorage.getItem(ADMIN_SESSION_KEY) === 'true') {
+        isAdminLoggedIn = true;
+        currentMode = 'admin';
+      }
+
       const today = new Date();
       document.getElementById('dateFilter').value = today.toISOString().split('T')[0];
 
@@ -712,6 +720,7 @@
       if (user === 'admin' && password === 'CaliLife') {
         isAdminLoggedIn = true;
         currentMode = 'admin';
+        localStorage.setItem(ADMIN_SESSION_KEY, 'true');
         document.getElementById('adminLoginPanel').classList.add('hidden');
         document.getElementById('adminPassword').value = '';
         setAdminMessage('Đăng nhập thành công.', 'success');
@@ -726,6 +735,7 @@
     function logoutAdmin() {
       isAdminLoggedIn = false;
       currentMode = 'code';
+      localStorage.removeItem(ADMIN_SESSION_KEY);
       updateModeUI();
       renderSchedule();
     }
