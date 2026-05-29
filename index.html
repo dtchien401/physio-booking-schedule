@@ -541,7 +541,7 @@
         <button onclick="verifyBookingCode()">Xác nhận code</button>
       </div>
       <div id="codeMessage" class="access-message">
-        Vui lòng nhập code được cấp. Hệ thống sẽ kiểm tra code trong sheet Code, cột A. Mỗi code được book tối đa 2 lần.
+        Vui lòng nhập code được cấp. Hệ thống sẽ kiểm tra code trong sheet Code, cột A. Mỗi code được book tối đa 1 lần.
       </div>
     </section>
 
@@ -769,7 +769,18 @@
         const remaining = pickValue(verifiedCodeMeta, ['remaining', 'Remaining', 'remainingUses'], '');
         const used = pickValue(verifiedCodeMeta, ['used', 'Used', 'usedCount'], '');
         const group = pickValue(verifiedCodeMeta, ['customerGroup', 'Customer Group', 'group'], '');
-        const usedText = used !== '' ? ' Đã dùng: ' + used + '/2.' : '';
+
+        // Frontend guard for new rule: 1 code = 1 session only.
+        // Apps Script action=verifyCode should also enforce the same rule server-side.
+        if ((remaining !== '' && Number(remaining) <= 0) || (used !== '' && Number(used) >= 1)) {
+          verifiedBookingCode = null;
+          verifiedCodeMeta = null;
+          setCodeMessage('Code này đã được sử dụng. Mỗi code chỉ được book 1 session.', 'error');
+          renderSchedule();
+          return;
+        }
+
+        const usedText = used !== '' ? ' Đã dùng: ' + used + '/1.' : '';
         const remainingText = remaining !== '' ? ' Còn lại: ' + remaining + ' lượt.' : '';
         const groupText = group ? ' Nhóm: ' + group + '.' : '';
 
@@ -1432,7 +1443,7 @@
           closeModal();
           clearForm();
           if (currentMode === 'code' && verifiedBookingCode) {
-            setCodeMessage('Đặt lịch thành công. Hệ thống đã ghi nhận lượt sử dụng cho code ' + verifiedBookingCode + '.', 'success');
+            setCodeMessage('Đặt lịch thành công. Hệ thống đã ghi nhận 1 lượt sử dụng cho code ' + verifiedBookingCode + '.', 'success');
             // Re-check usage so the screen shows updated remaining count from BOOKINGS.
             await verifyBookingCode();
           }
