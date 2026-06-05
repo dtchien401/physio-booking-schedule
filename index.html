@@ -558,7 +558,7 @@
         <button onclick="verifyBookingCode()">Xác nhận code</button>
       </div>
       <div id="codeMessage" class="access-message">
-        Vui lòng nhập code được cấp. Hệ thống sẽ kiểm tra code trong sheet Code, cột A. Mỗi code thường được book tối đa 1 lần. Riêng SEMINARTTC có thể nhập từ bây giờ nhưng chỉ dùng để book lịch TTC trong tuần 08-Jun-2026 đến 14-Jun-2026, có 100 lượt tổng, tối đa 4 lượt mỗi ngày, và không áp dụng cho SĐT đã từng sử dụng dịch vụ.
+        Nhập mã booking hợp lệ để xem và đặt lịch còn trống.
       </div>
     </section>
 
@@ -891,7 +891,7 @@
         const groupText = group ? ' Nhóm: ' + group + '.' : '';
 
         updateLocationFilter();
-        setCodeMessage('Code hợp lệ.' + groupText + usedText + remainingText + ' Vui lòng chọn slot để đặt lịch.', 'success');
+        setCodeMessage('✓ Mã hợp lệ. Vui lòng chọn lịch phù hợp để tiếp tục.', 'success');
         renderSchedule();
       } catch (err) {
         setCodeMessage('Không kiểm tra được code. Cần update Apps Script action=verifyCode để đọc sheet Code, cột A.', 'error');
