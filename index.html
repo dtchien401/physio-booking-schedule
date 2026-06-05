@@ -482,6 +482,23 @@
       line-height: 1.5;
     }
 
+    .quota-line {
+      margin-top: 8px;
+      display: inline-flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .quota-pill {
+      display: inline-block;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: rgba(37,99,235,0.10);
+      color: #1d4ed8;
+      font-weight: bold;
+      font-size: 12px;
+    }
+
     @media (max-width: 768px) {
       header {
         flex-direction: column;
@@ -541,7 +558,7 @@
         <button onclick="verifyBookingCode()">Xác nhận code</button>
       </div>
       <div id="codeMessage" class="access-message">
-        Vui lòng nhập code được cấp. Hệ thống sẽ kiểm tra code trong sheet Code, cột A. Mỗi code được book tối đa 1 lần.
+        Vui lòng nhập code được cấp. Hệ thống sẽ kiểm tra code trong sheet Code, cột A. Mỗi code thường được book tối đa 1 lần. Riêng SEMINARTTC có 100 lượt tổng, tối đa 4 lượt mỗi ngày.
       </div>
     </section>
 
@@ -632,6 +649,13 @@
     const CONTRACT_CSV_URL = 'contract.csv';
     const CONTRACT_CSV_FALLBACK_URL = 'https://raw.githubusercontent.com/dtchien401/physio-booking-schedule/main/contract.csv';
 
+    // Special shared seminar code rule:
+    // SEMINARTTC has 100 total uses, max 4 uses per selected booking date.
+    const SEMINAR_CODE = 'SEMINARTTC';
+    const SEMINAR_TOTAL_LIMIT = 100;
+    const SEMINAR_DAILY_LIMIT = 4;
+    const SEMINAR_LOCATION = 'TTC';
+
     let bookings = [];
     let scheduleRows = [];
     let contracts = [];
@@ -713,6 +737,20 @@
       el.innerText = message;
     }
 
+
+    function isSeminarCodeActive() {
+      return currentMode === 'code' && cleanText(verifiedBookingCode).toUpperCase() === SEMINAR_CODE;
+    }
+
+    function isSeminarLocation(location) {
+      const loc = cleanText(location).toUpperCase();
+      return loc === SEMINAR_LOCATION || loc.includes(SEMINAR_LOCATION);
+    }
+
+    function getSeminarLocationValue(locations) {
+      return (locations || []).find(isSeminarLocation) || SEMINAR_LOCATION;
+    }
+
     function loginAdmin() {
       const user = document.getElementById('adminUser').value.trim();
       const password = document.getElementById('adminPassword').value;
@@ -725,6 +763,7 @@
         document.getElementById('adminPassword').value = '';
         setAdminMessage('Đăng nhập thành công.', 'success');
         updateModeUI();
+        updateLocationFilter();
         renderSchedule();
         return;
       }
@@ -737,16 +776,57 @@
       currentMode = 'code';
       localStorage.removeItem(ADMIN_SESSION_KEY);
       updateModeUI();
+      updateLocationFilter();
       renderSchedule();
     }
 
     async function verifyBookingCode() {
-      const code = cleanText(document.getElementById('bookingCodeInput').value); // Validate against Google Sheet tab "Code", column A
+      const code = cleanText(document.getElementById('bookingCodeInput').value).toUpperCase(); // Validate against Google Sheet tab "Code", column A
+      const selectedDate = document.getElementById('dateFilter').value;
       verifiedBookingCode = null;
       verifiedCodeMeta = null;
 
       if (!code) {
+        updateLocationFilter();
         setCodeMessage('Vui lòng nhập code.', 'error');
+        renderSchedule();
+        return;
+      }
+
+      // Special rule for shared seminar code.
+      // This code is not treated as a one-time individual code. It has 100 total uses and max 4 uses per booking date.
+      if (code === SEMINAR_CODE) {
+        const quota = getSeminarCodeQuota(selectedDate);
+
+        if (quota.totalUsed >= SEMINAR_TOTAL_LIMIT) {
+          setCodeMessage('Code SEMINARTTC đã sử dụng đủ 100 lượt. Vui lòng liên hệ Admin để được hỗ trợ.', 'error');
+          renderSchedule();
+          return;
+        }
+
+        if (quota.dailyUsed >= SEMINAR_DAILY_LIMIT) {
+          setCodeMessage('Hôm nay đã không còn lượt sử dụng, vui lòng book qua ngày khác.', 'error');
+          renderSchedule();
+          return;
+        }
+
+        verifiedBookingCode = SEMINAR_CODE;
+        verifiedCodeMeta = {
+          code: SEMINAR_CODE,
+          totalUsed: quota.totalUsed,
+          totalRemaining: quota.totalRemaining,
+          dailyUsed: quota.dailyUsed,
+          dailyRemaining: quota.dailyRemaining,
+          customerGroup: 'Seminar TTC'
+        };
+
+        setCodeMessage(
+          'Code SEMINARTTC hợp lệ. Code này chỉ sử dụng tại TTC. Vui lòng chọn slot TTC để đặt lịch.' +
+          ' Tổng đã dùng: ' + quota.totalUsed + '/' + SEMINAR_TOTAL_LIMIT + '.' +
+          ' Ngày ' + selectedDate + ': còn ' + quota.dailyRemaining + '/' + SEMINAR_DAILY_LIMIT + ' lượt.' ,
+          'success'
+        );
+        updateLocationFilter();
         renderSchedule();
         return;
       }
@@ -763,14 +843,14 @@
         }
 
         // Apps Script returns usage info from sheet Code column A + BOOKINGS Booking Code column.
-        verifiedBookingCode = cleanText(res.code || code);
+        verifiedBookingCode = cleanText(res.code || code).toUpperCase();
         verifiedCodeMeta = res || {};
 
         const remaining = pickValue(verifiedCodeMeta, ['remaining', 'Remaining', 'remainingUses'], '');
         const used = pickValue(verifiedCodeMeta, ['used', 'Used', 'usedCount'], '');
         const group = pickValue(verifiedCodeMeta, ['customerGroup', 'Customer Group', 'group'], '');
 
-        // Frontend guard for new rule: 1 code = 1 session only.
+        // Frontend guard for normal codes: 1 code = 1 session only.
         // Apps Script action=verifyCode should also enforce the same rule server-side.
         if ((remaining !== '' && Number(remaining) <= 0) || (used !== '' && Number(used) >= 1)) {
           verifiedBookingCode = null;
@@ -784,6 +864,7 @@
         const remainingText = remaining !== '' ? ' Còn lại: ' + remaining + ' lượt.' : '';
         const groupText = group ? ' Nhóm: ' + group + '.' : '';
 
+        updateLocationFilter();
         setCodeMessage('Code hợp lệ.' + groupText + usedText + remainingText + ' Vui lòng chọn slot để đặt lịch.', 'success');
         renderSchedule();
       } catch (err) {
@@ -956,18 +1037,39 @@
       const select = document.getElementById('locationFilter');
       const current = select.value;
 
-      const locations = Array.from(new Set(scheduleRows.map(r => cleanText(r.location)).filter(Boolean)));
+      const allLocations = Array.from(new Set(scheduleRows.map(r => cleanText(r.location)).filter(Boolean)));
+      const seminarMode = isSeminarCodeActive();
+      const allowedLocations = seminarMode
+        ? allLocations.filter(isSeminarLocation)
+        : allLocations;
 
-      select.innerHTML = '<option value="ALL">Tất cả địa điểm</option>';
+      select.innerHTML = seminarMode ? '' : '<option value="ALL">Tất cả địa điểm</option>';
 
-      locations.forEach(function(loc) {
+      allowedLocations.forEach(function(loc) {
         const option = document.createElement('option');
         option.value = loc;
         option.textContent = loc;
         select.appendChild(option);
       });
 
-      if (locations.includes(current)) {
+      if (seminarMode) {
+        const seminarLocation = getSeminarLocationValue(allLocations);
+
+        if (!allowedLocations.length) {
+          const option = document.createElement('option');
+          option.value = seminarLocation;
+          option.textContent = seminarLocation;
+          select.appendChild(option);
+        }
+
+        select.value = seminarLocation;
+        select.disabled = true;
+        return;
+      }
+
+      select.disabled = false;
+
+      if (allLocations.includes(current)) {
         select.value = current;
       } else {
         select.value = 'ALL';
@@ -991,9 +1093,11 @@
         return;
       }
 
-      const filtered = locationFilter === 'ALL'
-        ? scheduleRows
-        : scheduleRows.filter(r => cleanText(r.location) === cleanText(locationFilter));
+      const filtered = isSeminarCodeActive()
+        ? scheduleRows.filter(r => isSeminarLocation(r.location))
+        : (locationFilter === 'ALL'
+          ? scheduleRows
+          : scheduleRows.filter(r => cleanText(r.location) === cleanText(locationFilter)));
 
       if (!filtered.length) {
         container.innerHTML = `
@@ -1092,11 +1196,12 @@
         `;
       }
 
-      const canBook = currentMode === 'admin' || !!verifiedBookingCode;
+      const quotaCheck = validateSelectedCodeQuota(date);
+      const canBook = currentMode === 'admin' || (!!verifiedBookingCode && quotaCheck.ok);
       const buttonLabel = currentMode === 'admin' ? 'Đặt lịch' : (verifiedBookingCode ? 'Đặt bằng code' : 'Nhập code trước');
       const buttonHtml = canBook
         ? `<button onclick="openBookingModal('${date}', '${slot}', '${row.location}', '${row.therapist}')">${buttonLabel}</button>`
-        : `<button class="secondary" onclick="setCodeMessage('Vui lòng nhập và xác nhận code trước khi chọn slot.', 'error')">${buttonLabel}</button>`;
+        : `<button class="secondary" onclick="setCodeMessage('${escapeJs(quotaCheck.message || 'Vui lòng nhập và xác nhận code trước khi chọn slot.')}', 'error')">${buttonLabel}</button>`;
 
       return `
         <div class="slot available">
@@ -1129,6 +1234,51 @@
       }
 
       return slots;
+    }
+
+    function isSeminarBooking(row) {
+      return cleanText(row.bookingCode).toUpperCase() === SEMINAR_CODE;
+    }
+
+    function isActiveBooking(row) {
+      return cleanText(row.status).toLowerCase() !== 'cancelled';
+    }
+
+    function getSeminarCodeQuota(date) {
+      const activeSeminarBookings = (bookings || []).filter(function(b) {
+        return isActiveBooking(b) && isSeminarBooking(b);
+      });
+
+      const totalUsed = activeSeminarBookings.length;
+      const dailyUsed = activeSeminarBookings.filter(function(b) {
+        return normalizeDate(b.date) === date;
+      }).length;
+
+      return {
+        totalUsed: totalUsed,
+        totalRemaining: Math.max(SEMINAR_TOTAL_LIMIT - totalUsed, 0),
+        dailyUsed: dailyUsed,
+        dailyRemaining: Math.max(SEMINAR_DAILY_LIMIT - dailyUsed, 0)
+      };
+    }
+
+    function validateSelectedCodeQuota(date) {
+      if (cleanText(verifiedBookingCode).toUpperCase() !== SEMINAR_CODE) {
+        return { ok: true, message: '' };
+      }
+
+      const quota = getSeminarCodeQuota(date);
+
+      if (quota.totalUsed >= SEMINAR_TOTAL_LIMIT) {
+        return { ok: false, message: 'Code SEMINARTTC đã sử dụng đủ 100 lượt. Vui lòng liên hệ Admin để được hỗ trợ.' };
+      }
+
+      if (quota.dailyUsed >= SEMINAR_DAILY_LIMIT) {
+        return { ok: false, message: 'Hôm nay đã không còn lượt sử dụng, vui lòng book qua ngày khác.' };
+      }
+
+      verifiedCodeMeta = Object.assign({}, verifiedCodeMeta || {}, quota);
+      return { ok: true, message: '' };
     }
 
     function normalizePhone(phone) {
@@ -1177,6 +1327,9 @@
         phone: pickValue(raw, ['phone', 'Phone', 'Phone number', 'Phone Number', 'SĐT'], ''),
         service: pickValue(raw, ['service', 'Service'], ''),
         status: pickValue(raw, ['status', 'Status'], ''),
+        bookingCode: pickValue(raw, ['bookingCode', 'Booking Code', 'Code', 'Mã booking'], ''),
+        bookingSource: pickValue(raw, ['bookingSource', 'Booking Source', 'Source'], ''),
+        customerGroup: pickValue(raw, ['customerGroup', 'Customer Group', 'group'], ''),
         note: pickValue(raw, ['note', 'Note', 'Ghi chú'], '')
       };
     }
@@ -1339,6 +1492,14 @@
         .normalize('NFC');
     }
 
+    function escapeJs(value) {
+      return String(value || '')
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/"/g, '\\"')
+        .replace(/\n/g, '\\n');
+    }
+
     function escapeHtml(value) {
       return String(value || '')
         .replace(/&/g, '&amp;')
@@ -1380,6 +1541,21 @@
         return;
       }
 
+      if (currentMode === 'code') {
+        const quotaCheck = validateSelectedCodeQuota(date);
+        if (!quotaCheck.ok) {
+          setCodeMessage(quotaCheck.message, 'error');
+          renderSchedule();
+          return;
+        }
+
+        if (isSeminarCodeActive() && !isSeminarLocation(location)) {
+          setCodeMessage('Code SEMINARTTC chỉ được sử dụng tại TTC.', 'error');
+          renderSchedule();
+          return;
+        }
+      }
+
       document.getElementById('selectedDate').value = date;
       document.getElementById('selectedTime').value = time;
       document.getElementById('selectedLocation').value = location;
@@ -1418,6 +1594,25 @@
         return;
       }
 
+      if (currentMode === 'code') {
+        const quotaCheck = validateSelectedCodeQuota(document.getElementById('selectedDate').value);
+        if (!quotaCheck.ok) {
+          alert(quotaCheck.message);
+          setCodeMessage(quotaCheck.message, 'error');
+          closeModal();
+          renderSchedule();
+          return;
+        }
+
+        if (isSeminarCodeActive() && !isSeminarLocation(document.getElementById('selectedLocation').value)) {
+          alert('Code SEMINARTTC chỉ được sử dụng tại TTC.');
+          setCodeMessage('Code SEMINARTTC chỉ được sử dụng tại TTC.', 'error');
+          closeModal();
+          renderSchedule();
+          return;
+        }
+      }
+
       const params = new URLSearchParams({
         action: 'book',
         date: document.getElementById('selectedDate').value,
@@ -1442,12 +1637,12 @@
         if (res.success) {
           closeModal();
           clearForm();
+          await loadData();
           if (currentMode === 'code' && verifiedBookingCode) {
             setCodeMessage('Đặt lịch thành công. Hệ thống đã ghi nhận 1 lượt sử dụng cho code ' + verifiedBookingCode + '.', 'success');
             // Re-check usage so the screen shows updated remaining count from BOOKINGS.
             await verifyBookingCode();
           }
-          await loadData();
         }
       } catch (err) {
         alert('Không gửi được booking. Vui lòng kiểm tra API.');
