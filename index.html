@@ -650,10 +650,10 @@
     const CONTRACT_CSV_FALLBACK_URL = 'https://raw.githubusercontent.com/dtchien401/physio-booking-schedule/main/contract.csv';
 
     // Special shared seminar code rule:
-    // SEMINARTTC is valid only from 2026-06-08 to 2026-06-14, has 100 total uses, max 4 uses per selected booking date.
+    // SEMINARTTC is valid only from 2026-06-08 to 2026-06-14, has 28 total uses, max 4 uses per selected booking date.
     const SEMINAR_CODE = 'SEMINARTTC';
-    const SEMINAR_TOTAL_LIMIT = 100;
-    const SEMINAR_DAILY_LIMIT = 4;
+    const SEMINAR_TOTAL_LIMIT = 42;
+    const SEMINAR_DAILY_LIMIT = 6;
     const SEMINAR_LOCATION = 'TTC';
     const SEMINAR_START_DATE = '2026-06-08';
     const SEMINAR_END_DATE = '2026-06-14';
@@ -674,6 +674,7 @@
     let verifiedCodeMeta = null;
 
     const ADMIN_SESSION_KEY = 'physio_admin_loggedin';
+    const SEMINAR_REGISTERED_PHONES_KEY = 'seminarttc_registered_phones_v1';
 
     document.addEventListener('DOMContentLoaded', function () {
       // Giữ trạng thái Admin Login sau khi refresh / mở lại trình duyệt.
@@ -812,7 +813,7 @@
       }
 
       // Special rule for shared seminar code.
-      // This code is not treated as a one-time individual code. It has 100 total uses and max 4 uses per booking date.
+      // This code is not treated as a one-time individual code. It has 28 total uses and max 4 uses per booking date.
       if (code === SEMINAR_CODE) {
         // User can verify/book now, but appointment date must be within 08-Jun-2026 to 14-Jun-2026.
         // If current selected date is outside the campaign week, move the calendar to the first valid date.
@@ -825,7 +826,7 @@
         const quota = getSeminarCodeQuota(selectedDate);
 
         if (quota.totalUsed >= SEMINAR_TOTAL_LIMIT) {
-          setCodeMessage('Code SEMINARTTC đã sử dụng đủ 100 lượt. Vui lòng liên hệ Admin để được hỗ trợ.', 'error');
+          setCodeMessage('Code SEMINARTTC đã sử dụng đủ 42 lượt. Vui lòng liên hệ Admin để được hỗ trợ.', 'error');
           renderSchedule();
           return;
         }
@@ -1039,17 +1040,62 @@
       return set;
     }
 
+    function getDateRange(startDate, endDate) {
+      const dates = [];
+      const start = new Date(startDate + 'T00:00:00');
+      const end = new Date(endDate + 'T00:00:00');
+
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        dates.push(d.toISOString().split('T')[0]);
+      }
+
+      return dates;
+    }
+
     async function loadAllBookingsForSeminarValidation() {
+      const map = new Map();
+
+      function addRows(rows) {
+        (rows || []).map(normalizeBookingRow).forEach(function(row) {
+          const key = [
+            normalizeDate(row.date),
+            cleanTime(row.time),
+            cleanText(row.location),
+            cleanText(row.therapist),
+            normalizePhone(row.phone),
+            cleanText(row.memberName)
+          ].join('|');
+          map.set(key, row);
+        });
+      }
+
+      addRows(bookings || []);
+
+      // Some Apps Script deployments only return bookings for the requested date.
+      // For SEMINARTTC phone-lock and weekly quota, explicitly load every date in the campaign week.
+      const dates = getDateRange(SEMINAR_START_DATE, SEMINAR_END_DATE);
+      for (const d of dates) {
+        try {
+          const res = await jsonp(API_URL + '?action=list&date=' + encodeURIComponent(d) + '&v=' + Date.now());
+          if (res && res.success && Array.isArray(res.bookings)) {
+            addRows(res.bookings);
+          }
+        } catch (err) {
+          console.warn('Cannot load seminar bookings for date ' + d + ':', err.message);
+        }
+      }
+
+      // Also try no-date list, in case the backend supports all-bookings response.
       try {
         const res = await jsonp(API_URL + '?action=list&v=' + Date.now());
         if (res && res.success && Array.isArray(res.bookings)) {
-          return res.bookings.map(normalizeBookingRow);
+          addRows(res.bookings);
         }
       } catch (err) {
         console.warn('Cannot load all bookings for seminar validation:', err.message);
       }
 
-      return bookings || [];
+      return Array.from(map.values());
     }
 
     function parseCSV(csvText) {
@@ -1366,7 +1412,12 @@
     }
 
     function isSeminarBooking(row) {
-      return cleanText(row.bookingCode).toUpperCase() === SEMINAR_CODE;
+      // Booking Code is stored in BOOKINGS column R.
+      // Only rows with Booking Code = SEMINARTTC should count as SEMINARTTC usage.
+      // Do not infer from TTC location, bookingSource, customerGroup, service, or note,
+      // otherwise normal TTC bookings may be blocked incorrectly.
+      const code = cleanText(row.bookingCode).toUpperCase();
+      return code === SEMINAR_CODE;
     }
 
     function isActiveBooking(row) {
@@ -1404,7 +1455,7 @@
       const quota = getSeminarCodeQuota(date);
 
       if (quota.totalUsed >= SEMINAR_TOTAL_LIMIT) {
-        return { ok: false, message: 'Code SEMINARTTC đã sử dụng đủ 100 lượt. Vui lòng liên hệ Admin để được hỗ trợ.' };
+        return { ok: false, message: 'Code SEMINARTTC đã sử dụng đủ 42 lượt. Vui lòng liên hệ Admin để được hỗ trợ.' };
       }
 
       if (quota.dailyUsed >= SEMINAR_DAILY_LIMIT) {
@@ -1426,19 +1477,39 @@
         .trim();
     }
 
+    function getLocalSeminarRegisteredPhones() {
+      try {
+        return JSON.parse(localStorage.getItem(SEMINAR_REGISTERED_PHONES_KEY) || '[]');
+      } catch (err) {
+        return [];
+      }
+    }
+
+    function saveLocalSeminarRegisteredPhone(phone) {
+      const targetPhone = normalizePhone(phone);
+      if (!targetPhone) return;
+
+      const phones = getLocalSeminarRegisteredPhones();
+      if (!phones.includes(targetPhone)) {
+        phones.push(targetPhone);
+        localStorage.setItem(SEMINAR_REGISTERED_PHONES_KEY, JSON.stringify(phones));
+      }
+    }
+
     function hasExistingSeminarRegistrant(memberName, phone) {
       const targetPhone = normalizePhone(phone);
+      if (!targetPhone) return false;
 
-      const sourceBookings = (allBookings && allBookings.length) ? allBookings : bookings;
+      const combined = [];
+      combined.push.apply(combined, allBookings || []);
+      combined.push.apply(combined, bookings || []);
 
-      return (sourceBookings || []).some(function(b) {
-        if (!isActiveBooking(b) || !isSeminarBooking(b)) return false;
+      return combined.some(function(b) {
+        if (!isActiveBooking(b)) return false;
+        if (!isSeminarBooking(b)) return false;
 
         const bookingPhone = normalizePhone(b.phone);
-
-        // Seminar duplicate rule: only match by the last 9 digits of phone number.
-        // Names are allowed to be duplicated.
-        return targetPhone && bookingPhone && targetPhone === bookingPhone;
+        return !!bookingPhone && bookingPhone === targetPhone;
       });
     }
 
@@ -1525,7 +1596,7 @@
         phone: pickValue(raw, ['phone', 'Phone', 'Phone number', 'Phone Number', 'SĐT'], ''),
         service: pickValue(raw, ['service', 'Service'], ''),
         status: pickValue(raw, ['status', 'Status'], ''),
-        bookingCode: pickValue(raw, ['bookingCode', 'Booking Code', 'Code', 'Mã booking'], ''),
+        bookingCode: pickValue(raw, ['bookingCode', 'Booking Code', 'BookingCode', 'Code', 'Mã booking', 'R', 'Column R', 'Col R'], ''),
         bookingSource: pickValue(raw, ['bookingSource', 'Booking Source', 'Source'], ''),
         customerGroup: pickValue(raw, ['customerGroup', 'Customer Group', 'group'], ''),
         note: pickValue(raw, ['note', 'Note', 'Ghi chú'], '')
@@ -1787,6 +1858,12 @@
         return;
       }
 
+      if (isSeminarCodeActive()) {
+        // Refresh seminar-week bookings immediately before final submit,
+        // so the same phone cannot book twice from another tab/device after the page loaded.
+        allBookings = await loadAllBookingsForSeminarValidation();
+      }
+
       const uniqueCheck = validateSeminarUniqueRegistrant(memberName, phone);
       if (!uniqueCheck.ok) {
         alert(uniqueCheck.message);
@@ -1833,13 +1910,15 @@
         therapist: document.getElementById('selectedTherapist').value,
         memberName: memberName,
         phone: phone,
-        service: '',
+        service: isSeminarCodeActive() ? 'Seminar TTC Trial' : '',
         status: 'booked',
-        bookingSource: currentMode === 'admin' ? 'Admin Booking' : 'Code Booking',
+        bookingSource: currentMode === 'admin' ? 'Admin Booking' : (isSeminarCodeActive() ? 'Seminar TTC' : 'Code Booking'),
+        // Store the actual booking code into BOOKINGS column R.
+        // This is required so later checks know the phone used SEMINARTTC specifically.
         bookingCode: currentMode === 'code' ? verifiedBookingCode : '',
-        customerGroup: currentMode === 'code' ? pickValue(verifiedCodeMeta, ['customerGroup', 'Customer Group', 'group'], '') : '',
+        customerGroup: currentMode === 'code' ? (isSeminarCodeActive() ? 'Seminar TTC' : pickValue(verifiedCodeMeta, ['customerGroup', 'Customer Group', 'group'], '')) : '',
         seminarUniqueRule: isSeminarCodeActive() ? '1 phone number = 1 booking by last 9 digits; exclude existing service customers from Sheet column G Phone' : '',
-        note: document.getElementById('note').value
+        note: isSeminarCodeActive() ? (document.getElementById('note').value + ' [SEMINAR TTC]').trim() : document.getElementById('note').value
       });
 
       try {
@@ -1848,11 +1927,12 @@
         alert(res.message || 'Đã xử lý xong.');
 
         if (res.success) {
+          // Booking Code is saved to column R, so future duplicate checks use sheet data.
           closeModal();
           clearForm();
           await loadData();
           if (currentMode === 'code' && verifiedBookingCode) {
-            setCodeMessage('Đặt lịch thành công. Hệ thống đã ghi nhận 1 lượt sử dụng cho code ' + verifiedBookingCode + '.', 'success');
+            setCodeMessage('✓ Đặt lịch thành công.', 'success');
             // Re-check usage so the screen shows updated remaining count from BOOKINGS.
             await verifyBookingCode();
           }
