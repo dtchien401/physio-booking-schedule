@@ -174,6 +174,13 @@
       opacity: 0.96;
     }
 
+    button:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
     .secondary {
       background: linear-gradient(135deg, #64748b, #94a3b8);
     }
@@ -636,7 +643,7 @@
 
       <div class="modal-actions">
         <button class="secondary" onclick="closeModal()">Huỷ</button>
-        <button onclick="submitBooking()">Xác nhận đặt lịch</button>
+        <button id="submitBookingBtn" onclick="submitBooking()">Xác nhận đặt lịch</button>
       </div>
     </div>
   </div>
@@ -672,6 +679,7 @@
     let isAdminLoggedIn = false;
     let verifiedBookingCode = null;
     let verifiedCodeMeta = null;
+    let isSubmittingBooking = false;
 
     const ADMIN_SESSION_KEY = 'physio_admin_loggedin';
     const SEMINAR_REGISTERED_PHONES_KEY = 'seminarttc_registered_phones_v1';
@@ -1842,9 +1850,24 @@
 
     function closeModal() {
       document.getElementById('bookingModal').style.display = 'none';
+      resetSubmitButton();
+    }
+
+    function setSubmitButtonLoading(isLoading) {
+      const btn = document.getElementById('submitBookingBtn');
+      if (!btn) return;
+      btn.disabled = isLoading;
+      btn.innerText = isLoading ? 'Đang xử lý...' : 'Xác nhận đặt lịch';
+    }
+
+    function resetSubmitButton() {
+      isSubmittingBooking = false;
+      setSubmitButtonLoading(false);
     }
 
     async function submitBooking() {
+      if (isSubmittingBooking) return;
+
       const memberName = document.getElementById('memberName').value.trim();
       const phone = document.getElementById('phone').value.trim();
 
@@ -1858,70 +1881,77 @@
         return;
       }
 
-      if (isSeminarCodeActive()) {
-        // Refresh seminar-week bookings immediately before final submit,
-        // so the same phone cannot book twice from another tab/device after the page loaded.
-        allBookings = await loadAllBookingsForSeminarValidation();
-      }
-
-      const uniqueCheck = validateSeminarUniqueRegistrant(memberName, phone);
-      if (!uniqueCheck.ok) {
-        alert(uniqueCheck.message);
-        setCodeMessage(uniqueCheck.message, 'error');
-        return;
-      }
-
-      const newCustomerCheck = validateSeminarNewCustomerEligibility(phone);
-      if (!newCustomerCheck.ok) {
-        alert(newCustomerCheck.message);
-        setCodeMessage(newCustomerCheck.message, 'error');
-        return;
-      }
-
-      if (currentMode === 'code' && !verifiedBookingCode) {
-        alert('Vui lòng xác nhận code trước khi đặt lịch.');
-        return;
-      }
-
-      if (currentMode === 'code') {
-        const quotaCheck = validateSelectedCodeQuota(document.getElementById('selectedDate').value);
-        if (!quotaCheck.ok) {
-          alert(quotaCheck.message);
-          setCodeMessage(quotaCheck.message, 'error');
-          closeModal();
-          renderSchedule();
-          return;
-        }
-
-        if (isSeminarCodeActive() && !isSeminarLocation(document.getElementById('selectedLocation').value)) {
-          alert('Code SEMINARTTC chỉ được sử dụng tại TTC.');
-          setCodeMessage('Code SEMINARTTC chỉ được sử dụng tại TTC.', 'error');
-          closeModal();
-          renderSchedule();
-          return;
-        }
-      }
-
-      const params = new URLSearchParams({
-        action: 'book',
-        date: document.getElementById('selectedDate').value,
-        time: document.getElementById('selectedTime').value,
-        location: document.getElementById('selectedLocation').value,
-        therapist: document.getElementById('selectedTherapist').value,
-        memberName: memberName,
-        phone: phone,
-        service: isSeminarCodeActive() ? 'Seminar TTC Trial' : '',
-        status: 'booked',
-        bookingSource: currentMode === 'admin' ? 'Admin Booking' : (isSeminarCodeActive() ? 'Seminar TTC' : 'Code Booking'),
-        // Store the actual booking code into BOOKINGS column R.
-        // This is required so later checks know the phone used SEMINARTTC specifically.
-        bookingCode: currentMode === 'code' ? verifiedBookingCode : '',
-        customerGroup: currentMode === 'code' ? (isSeminarCodeActive() ? 'Seminar TTC' : pickValue(verifiedCodeMeta, ['customerGroup', 'Customer Group', 'group'], '')) : '',
-        seminarUniqueRule: isSeminarCodeActive() ? '1 phone number = 1 booking by last 9 digits; exclude existing service customers from Sheet column G Phone' : '',
-        note: isSeminarCodeActive() ? (document.getElementById('note').value + ' [SEMINAR TTC]').trim() : document.getElementById('note').value
-      });
+      isSubmittingBooking = true;
+      setSubmitButtonLoading(true);
+      setCodeMessage('Đang xử lý đặt lịch...', '');
 
       try {
+        if (isSeminarCodeActive()) {
+          // Refresh seminar-week bookings immediately before final submit,
+          // so the same phone cannot book twice from another tab/device after the page loaded.
+          allBookings = await loadAllBookingsForSeminarValidation();
+        }
+
+        const uniqueCheck = validateSeminarUniqueRegistrant(memberName, phone);
+        if (!uniqueCheck.ok) {
+          alert(uniqueCheck.message);
+          setCodeMessage(uniqueCheck.message, 'error');
+          resetSubmitButton();
+          return;
+        }
+
+        const newCustomerCheck = validateSeminarNewCustomerEligibility(phone);
+        if (!newCustomerCheck.ok) {
+          alert(newCustomerCheck.message);
+          setCodeMessage(newCustomerCheck.message, 'error');
+          resetSubmitButton();
+          return;
+        }
+
+        if (currentMode === 'code' && !verifiedBookingCode) {
+          alert('Vui lòng xác nhận code trước khi đặt lịch.');
+          resetSubmitButton();
+          return;
+        }
+
+        if (currentMode === 'code') {
+          const quotaCheck = validateSelectedCodeQuota(document.getElementById('selectedDate').value);
+          if (!quotaCheck.ok) {
+            alert(quotaCheck.message);
+            setCodeMessage(quotaCheck.message, 'error');
+            closeModal();
+            renderSchedule();
+            return;
+          }
+
+          if (isSeminarCodeActive() && !isSeminarLocation(document.getElementById('selectedLocation').value)) {
+            alert('Code SEMINARTTC chỉ được sử dụng tại TTC.');
+            setCodeMessage('Code SEMINARTTC chỉ được sử dụng tại TTC.', 'error');
+            closeModal();
+            renderSchedule();
+            return;
+          }
+        }
+
+        const params = new URLSearchParams({
+          action: 'book',
+          date: document.getElementById('selectedDate').value,
+          time: document.getElementById('selectedTime').value,
+          location: document.getElementById('selectedLocation').value,
+          therapist: document.getElementById('selectedTherapist').value,
+          memberName: memberName,
+          phone: phone,
+          service: isSeminarCodeActive() ? 'Seminar TTC Trial' : '',
+          status: 'booked',
+          bookingSource: currentMode === 'admin' ? 'Admin Booking' : (isSeminarCodeActive() ? 'Seminar TTC' : 'Code Booking'),
+          // Store the actual booking code into BOOKINGS column R.
+          // This is required so later checks know the phone used SEMINARTTC specifically.
+          bookingCode: currentMode === 'code' ? verifiedBookingCode : '',
+          customerGroup: currentMode === 'code' ? (isSeminarCodeActive() ? 'Seminar TTC' : pickValue(verifiedCodeMeta, ['customerGroup', 'Customer Group', 'group'], '')) : '',
+          seminarUniqueRule: isSeminarCodeActive() ? '1 phone number = 1 booking by last 9 digits; exclude existing service customers from Sheet column G Phone' : '',
+          note: isSeminarCodeActive() ? (document.getElementById('note').value + ' [SEMINAR TTC]').trim() : document.getElementById('note').value
+        });
+
         const res = await jsonp(API_URL + '?' + params.toString() + '&v=' + Date.now());
 
         alert(res.message || 'Đã xử lý xong.');
@@ -1936,9 +1966,12 @@
             // Re-check usage so the screen shows updated remaining count from BOOKINGS.
             await verifyBookingCode();
           }
+        } else {
+          resetSubmitButton();
         }
       } catch (err) {
         alert('Không gửi được booking. Vui lòng kiểm tra API.');
+        resetSubmitButton();
       }
     }
 
