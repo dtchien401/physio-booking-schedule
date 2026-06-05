@@ -558,7 +558,7 @@
         <button onclick="verifyBookingCode()">Xác nhận code</button>
       </div>
       <div id="codeMessage" class="access-message">
-        Vui lòng nhập code được cấp. Hệ thống sẽ kiểm tra code trong sheet Code, cột A. Mỗi code thường được book tối đa 1 lần. Riêng SEMINARTTC chỉ áp dụng từ 08-Jun-2026 đến 14-Jun-2026, có 100 lượt tổng, tối đa 4 lượt mỗi ngày, và không áp dụng cho SĐT đã từng sử dụng dịch vụ.
+        Vui lòng nhập code được cấp. Hệ thống sẽ kiểm tra code trong sheet Code, cột A. Mỗi code thường được book tối đa 1 lần. Riêng SEMINARTTC có thể nhập từ bây giờ nhưng chỉ dùng để book lịch TTC trong tuần 08-Jun-2026 đến 14-Jun-2026, có 100 lượt tổng, tối đa 4 lượt mỗi ngày, và không áp dụng cho SĐT đã từng sử dụng dịch vụ.
       </div>
     </section>
 
@@ -800,7 +800,7 @@
 
     async function verifyBookingCode() {
       const code = cleanText(document.getElementById('bookingCodeInput').value).toUpperCase(); // Validate against Google Sheet tab "Code", column A
-      const selectedDate = document.getElementById('dateFilter').value;
+      let selectedDate = document.getElementById('dateFilter').value;
       verifiedBookingCode = null;
       verifiedCodeMeta = null;
 
@@ -814,11 +814,12 @@
       // Special rule for shared seminar code.
       // This code is not treated as a one-time individual code. It has 100 total uses and max 4 uses per booking date.
       if (code === SEMINAR_CODE) {
+        // User can verify/book now, but appointment date must be within 08-Jun-2026 to 14-Jun-2026.
+        // If current selected date is outside the campaign week, move the calendar to the first valid date.
         if (!isSeminarDateAllowed(selectedDate)) {
-          updateLocationFilter();
-          setCodeMessage(getSeminarDateMessage(), 'error');
-          renderSchedule();
-          return;
+          selectedDate = SEMINAR_START_DATE;
+          document.getElementById('dateFilter').value = selectedDate;
+          await loadData();
         }
 
         const quota = getSeminarCodeQuota(selectedDate);
@@ -846,7 +847,7 @@
         };
 
         setCodeMessage(
-          'Code SEMINARTTC hợp lệ từ 08-Jun-2026 đến 14-Jun-2026. Code này chỉ sử dụng tại TTC. Vui lòng chọn slot TTC để đặt lịch.' +
+          'Code SEMINARTTC hợp lệ. Code này chỉ dùng để book lịch TTC trong tuần 08-Jun-2026 đến 14-Jun-2026. Vui lòng chọn slot TTC trong tuần này để đặt lịch.' +
           ' Tổng đã dùng: ' + quota.totalUsed + '/' + SEMINAR_TOTAL_LIMIT + '.' +
           ' Ngày ' + selectedDate + ': còn ' + quota.dailyRemaining + '/' + SEMINAR_DAILY_LIMIT + ' lượt.' ,
           'success'
