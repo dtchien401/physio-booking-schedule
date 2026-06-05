@@ -558,7 +558,7 @@
         <button onclick="verifyBookingCode()">Xác nhận code</button>
       </div>
       <div id="codeMessage" class="access-message">
-        Vui lòng nhập code được cấp. Hệ thống sẽ kiểm tra code trong sheet Code, cột A. Mỗi code thường được book tối đa 1 lần. Riêng SEMINARTTC có 100 lượt tổng, tối đa 4 lượt mỗi ngày.
+        Vui lòng nhập code được cấp. Hệ thống sẽ kiểm tra code trong sheet Code, cột A. Mỗi code thường được book tối đa 1 lần. Riêng SEMINARTTC chỉ áp dụng từ 08-Jun-2026 đến 14-Jun-2026, có 100 lượt tổng, tối đa 4 lượt mỗi ngày.
       </div>
     </section>
 
@@ -650,11 +650,13 @@
     const CONTRACT_CSV_FALLBACK_URL = 'https://raw.githubusercontent.com/dtchien401/physio-booking-schedule/main/contract.csv';
 
     // Special shared seminar code rule:
-    // SEMINARTTC has 100 total uses, max 4 uses per selected booking date.
+    // SEMINARTTC is valid only from 2026-06-08 to 2026-06-14, has 100 total uses, max 4 uses per selected booking date.
     const SEMINAR_CODE = 'SEMINARTTC';
     const SEMINAR_TOTAL_LIMIT = 100;
     const SEMINAR_DAILY_LIMIT = 4;
     const SEMINAR_LOCATION = 'TTC';
+    const SEMINAR_START_DATE = '2026-06-08';
+    const SEMINAR_END_DATE = '2026-06-14';
 
     let bookings = [];
     let scheduleRows = [];
@@ -742,6 +744,15 @@
       return currentMode === 'code' && cleanText(verifiedBookingCode).toUpperCase() === SEMINAR_CODE;
     }
 
+    function isSeminarDateAllowed(date) {
+      const d = normalizeDate(date);
+      return d >= SEMINAR_START_DATE && d <= SEMINAR_END_DATE;
+    }
+
+    function getSeminarDateMessage() {
+      return 'Code SEMINARTTC chỉ áp dụng cho lịch đặt từ 08-Jun-2026 đến 14-Jun-2026.';
+    }
+
     function isSeminarLocation(location) {
       const loc = cleanText(location).toUpperCase();
       return loc === SEMINAR_LOCATION || loc.includes(SEMINAR_LOCATION);
@@ -796,6 +807,13 @@
       // Special rule for shared seminar code.
       // This code is not treated as a one-time individual code. It has 100 total uses and max 4 uses per booking date.
       if (code === SEMINAR_CODE) {
+        if (!isSeminarDateAllowed(selectedDate)) {
+          updateLocationFilter();
+          setCodeMessage(getSeminarDateMessage(), 'error');
+          renderSchedule();
+          return;
+        }
+
         const quota = getSeminarCodeQuota(selectedDate);
 
         if (quota.totalUsed >= SEMINAR_TOTAL_LIMIT) {
@@ -821,7 +839,7 @@
         };
 
         setCodeMessage(
-          'Code SEMINARTTC hợp lệ. Code này chỉ sử dụng tại TTC. Vui lòng chọn slot TTC để đặt lịch.' +
+          'Code SEMINARTTC hợp lệ từ 08-Jun-2026 đến 14-Jun-2026. Code này chỉ sử dụng tại TTC. Vui lòng chọn slot TTC để đặt lịch.' +
           ' Tổng đã dùng: ' + quota.totalUsed + '/' + SEMINAR_TOTAL_LIMIT + '.' +
           ' Ngày ' + selectedDate + ': còn ' + quota.dailyRemaining + '/' + SEMINAR_DAILY_LIMIT + ' lượt.' ,
           'success'
@@ -1267,6 +1285,10 @@
         return { ok: true, message: '' };
       }
 
+      if (!isSeminarDateAllowed(date)) {
+        return { ok: false, message: getSeminarDateMessage() };
+      }
+
       const quota = getSeminarCodeQuota(date);
 
       if (quota.totalUsed >= SEMINAR_TOTAL_LIMIT) {
@@ -1278,6 +1300,46 @@
       }
 
       verifiedCodeMeta = Object.assign({}, verifiedCodeMeta || {}, quota);
+      return { ok: true, message: '' };
+    }
+
+    function normalizeNameForMatch(name) {
+      return cleanText(name)
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/g, 'd')
+        .replace(/[^a-z0-9 ]/g, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    function hasExistingSeminarRegistrant(memberName, phone) {
+      const targetPhone = normalizePhone(phone);
+
+      return (bookings || []).some(function(b) {
+        if (!isActiveBooking(b) || !isSeminarBooking(b)) return false;
+
+        const bookingPhone = normalizePhone(b.phone);
+
+        // Seminar duplicate rule: only match by the last 9 digits of phone number.
+        // Names are allowed to be duplicated.
+        return targetPhone && bookingPhone && targetPhone === bookingPhone;
+      });
+    }
+
+    function validateSeminarUniqueRegistrant(memberName, phone) {
+      if (!isSeminarCodeActive()) {
+        return { ok: true, message: '' };
+      }
+
+      if (hasExistingSeminarRegistrant(memberName, phone)) {
+        return {
+          ok: false,
+          message: 'Số điện thoại này đã đăng ký code SEMINARTTC. Mỗi số điện thoại chỉ được đăng ký 1 lần.'
+        };
+      }
+
       return { ok: true, message: '' };
     }
 
@@ -1589,6 +1651,13 @@
         return;
       }
 
+      const uniqueCheck = validateSeminarUniqueRegistrant(memberName, phone);
+      if (!uniqueCheck.ok) {
+        alert(uniqueCheck.message);
+        setCodeMessage(uniqueCheck.message, 'error');
+        return;
+      }
+
       if (currentMode === 'code' && !verifiedBookingCode) {
         alert('Vui lòng xác nhận code trước khi đặt lịch.');
         return;
@@ -1626,6 +1695,7 @@
         bookingSource: currentMode === 'admin' ? 'Admin Booking' : 'Code Booking',
         bookingCode: currentMode === 'code' ? verifiedBookingCode : '',
         customerGroup: currentMode === 'code' ? pickValue(verifiedCodeMeta, ['customerGroup', 'Customer Group', 'group'], '') : '',
+        seminarUniqueRule: isSeminarCodeActive() ? '1 phone number = 1 booking by last 9 digits' : '',
         note: document.getElementById('note').value
       });
 
