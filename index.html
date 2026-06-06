@@ -633,7 +633,7 @@
 
       <div class="form-group">
         <label>Số điện thoại</label>
-        <input id="phone" placeholder="Nhập số điện thoại" />
+        <input id="phone" type="text" inputmode="numeric" maxlength="10" pattern="0[0-9]{9}" placeholder="VD: 0909289333" autocomplete="tel" />
       </div>
 
       <div class="form-group">
@@ -702,6 +702,15 @@
       document.getElementById('adminPassword').addEventListener('keydown', function(e) {
         if (e.key === 'Enter') loginAdmin();
       });
+
+      const phoneInput = document.getElementById('phone');
+      if (phoneInput) {
+        phoneInput.addEventListener('input', function() {
+          // Keep phone as text, allow digits only, max 10 digits.
+          // This prevents losing the leading 0 on mobile/desktop browsers.
+          this.value = String(this.value || '').replace(/\D/g, '').slice(0, 10);
+        });
+      }
 
       updateModeUI();
       loadData();
@@ -1875,6 +1884,10 @@
       setSubmitButtonLoading(false);
     }
 
+    function isValidVietnamPhone(phone) {
+      return /^0\d{9}$/.test(String(phone || '').trim());
+    }
+
     async function submitBooking() {
       if (isSubmittingBooking) return;
 
@@ -1888,6 +1901,11 @@
 
       if (!phone) {
         alert('Vui lòng nhập số điện thoại.');
+        return;
+      }
+
+      if (!isValidVietnamPhone(phone)) {
+        alert('Số điện thoại phải bắt đầu bằng số 0 và có đủ 10 số. Ví dụ: 0909289333');
         return;
       }
 
