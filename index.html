@@ -657,7 +657,7 @@
     const CONTRACT_CSV_FALLBACK_URL = 'https://raw.githubusercontent.com/dtchien401/physio-booking-schedule/main/contract.csv';
 
     // Special shared seminar code rule:
-    // SEMINARTTC is valid only from 2026-06-08 to 2026-06-14, has 28 total uses, max 4 uses per selected booking date.
+    // SEMINARTTC is valid only from 2026-06-08 to 2026-06-14, has 42 total uses, max 6 uses per selected booking date.
     const SEMINAR_CODE = 'SEMINARTTC';
     const SEMINAR_TOTAL_LIMIT = 42;
     const SEMINAR_DAILY_LIMIT = 6;
@@ -1420,12 +1420,22 @@
     }
 
     function isSeminarBooking(row) {
-      // Booking Code is stored in BOOKINGS column R.
-      // Only rows with Booking Code = SEMINARTTC should count as SEMINARTTC usage.
-      // Do not infer from TTC location, bookingSource, customerGroup, service, or note,
-      // otherwise normal TTC bookings may be blocked incorrectly.
+      // SEMINARTTC is a shared campaign code.
+      // Primary marker should be BOOKINGS column R = SEMINARTTC.
+      // Fallback markers are kept because some Apps Script deployments still block
+      // a repeated bookingCode as "used đủ 1 lần". In that case the frontend sends
+      // bookingCode blank and stores SEMINARTTC in bookingSource/service/note instead.
       const code = cleanText(row.bookingCode).toUpperCase();
-      return code === SEMINAR_CODE;
+      const source = cleanText(row.bookingSource).toUpperCase();
+      const service = cleanText(row.service).toUpperCase();
+      const group = cleanText(row.customerGroup).toUpperCase();
+      const note = cleanText(row.note).toUpperCase();
+
+      return code === SEMINAR_CODE ||
+        source === 'SEMINAR TTC' ||
+        service === 'SEMINAR TTC TRIAL' ||
+        group === 'SEMINAR TTC' ||
+        note.includes('[SEMINARTTC]');
     }
 
     function isActiveBooking(row) {
@@ -1933,7 +1943,7 @@
           }
         }
 
-        const params = new URLSearchParams({
+        const paramsObj = {
           action: 'book',
           date: document.getElementById('selectedDate').value,
           time: document.getElementById('selectedTime').value,
@@ -1944,20 +1954,26 @@
           service: isSeminarCodeActive() ? 'Seminar TTC Trial' : '',
           status: 'booked',
           bookingSource: currentMode === 'admin' ? 'Admin Booking' : (isSeminarCodeActive() ? 'Seminar TTC' : 'Code Booking'),
-          // Store the actual booking code into BOOKINGS column R.
-          // This is required so later checks know the phone used SEMINARTTC specifically.
-          bookingCode: currentMode === 'code' ? verifiedBookingCode : '',
           customerGroup: currentMode === 'code' ? (isSeminarCodeActive() ? 'Seminar TTC' : pickValue(verifiedCodeMeta, ['customerGroup', 'Customer Group', 'group'], '')) : '',
           seminarUniqueRule: isSeminarCodeActive() ? '1 phone number = 1 booking by last 9 digits; exclude existing service customers from Sheet column G Phone' : '',
-          note: isSeminarCodeActive() ? (document.getElementById('note').value + ' [SEMINAR TTC]').trim() : document.getElementById('note').value
-        });
+          note: isSeminarCodeActive() ? (document.getElementById('note').value + ' [SEMINARTTC]').trim() : document.getElementById('note').value
+        };
+
+        // SEMINARTTC là shared campaign code, KHÔNG gửi field bookingCode lên API.
+        // Nếu gửi bookingCode dù là rỗng, một số Apps Script vẫn tự ghi/validate như code thường.
+        // Booking seminar sẽ được nhận diện qua bookingSource/service/customerGroup/note.
+        if (currentMode === 'code' && !isSeminarCodeActive()) {
+          paramsObj.bookingCode = verifiedBookingCode;
+        }
+
+        const params = new URLSearchParams(paramsObj);
 
         const res = await jsonp(API_URL + '?' + params.toString() + '&v=' + Date.now());
 
         alert(res.message || 'Đã xử lý xong.');
 
         if (res.success) {
-          // Booking Code is saved to column R, so future duplicate checks use sheet data.
+          // Seminar bookings are marked by source/service/group/note; normal codes still use column R.
           closeModal();
           clearForm();
           await loadData();
