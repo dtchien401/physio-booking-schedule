@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-  <title>Lịch Đặt Hẹn ProPhysio | Code Booking</title>
+  <title>Lịch Đặt Hẹn ProPhysio | Booking</title>
 
   <style>
     * { box-sizing: border-box; }
@@ -656,25 +656,9 @@
     const CONTRACT_CSV_URL = 'contract.csv';
     const CONTRACT_CSV_FALLBACK_URL = 'https://raw.githubusercontent.com/dtchien401/physio-booking-schedule/main/contract.csv';
 
-    // Special shared seminar code rule:
-    // SEMINARTTC is valid only from 2026-06-08 to 2026-06-14, has 42 total uses, max 6 uses per selected booking date.
-    const SEMINAR_CODE = 'SEMINARTTC';
-    const SEMINAR_TOTAL_LIMIT = 42;
-    const SEMINAR_DAILY_LIMIT = 6;
-    const SEMINAR_LOCATION = 'TTC';
-    const SEMINAR_START_DATE = '2026-06-08';
-    const SEMINAR_END_DATE = '2026-06-14';
-
-    // Existing ProPhysio / service-user exclusion list.
-    // Source: Google Sheet gid 145511687, column G = Phone.
-    const EXISTING_CUSTOMER_PHONE_CSV_URL = 'https://docs.google.com/spreadsheets/d/1lv1w6g0-FryW115yw0xV1ep0CQu36WEOQaVMxjW5Xdg/export?format=csv&gid=145511687';
-    const EXISTING_CUSTOMER_PHONE_GVIZ_URL = 'https://docs.google.com/spreadsheets/d/1lv1w6g0-FryW115yw0xV1ep0CQu36WEOQaVMxjW5Xdg/gviz/tq?tqx=out:csv&gid=145511687';
-
     let bookings = [];
-    let allBookings = [];
     let scheduleRows = [];
     let contracts = [];
-    let existingCustomerPhones = new Set();
     let currentMode = 'code';
     let isAdminLoggedIn = false;
     let verifiedBookingCode = null;
@@ -682,7 +666,6 @@
     let isSubmittingBooking = false;
 
     const ADMIN_SESSION_KEY = 'physio_admin_loggedin';
-    const SEMINAR_REGISTERED_PHONES_KEY = 'seminarttc_registered_phones_v1';
 
     document.addEventListener('DOMContentLoaded', function () {
       // Giữ trạng thái Admin Login sau khi refresh / mở lại trình duyệt.
@@ -764,29 +747,6 @@
       el.innerText = message;
     }
 
-
-    function isSeminarCodeActive() {
-      return currentMode === 'code' && cleanText(verifiedBookingCode).toUpperCase() === SEMINAR_CODE;
-    }
-
-    function isSeminarDateAllowed(date) {
-      const d = normalizeDate(date);
-      return d >= SEMINAR_START_DATE && d <= SEMINAR_END_DATE;
-    }
-
-    function getSeminarDateMessage() {
-      return 'Code SEMINARTTC chỉ áp dụng cho lịch đặt từ 08-Jun-2026 đến 14-Jun-2026.';
-    }
-
-    function isSeminarLocation(location) {
-      const loc = cleanText(location).toUpperCase();
-      return loc === SEMINAR_LOCATION || loc.includes(SEMINAR_LOCATION);
-    }
-
-    function getSeminarLocationValue(locations) {
-      return (locations || []).find(isSeminarLocation) || SEMINAR_LOCATION;
-    }
-
     function loginAdmin() {
       const user = document.getElementById('adminUser').value.trim();
       const password = document.getElementById('adminPassword').value;
@@ -825,50 +785,6 @@
       if (!code) {
         updateLocationFilter();
         setCodeMessage('Vui lòng nhập code.', 'error');
-        renderSchedule();
-        return;
-      }
-
-      // Special rule for shared seminar code.
-      // This code is not treated as a one-time individual code. It has 28 total uses and max 4 uses per booking date.
-      if (code === SEMINAR_CODE) {
-        // User can verify/book now, but appointment date must be within 08-Jun-2026 to 14-Jun-2026.
-        // If current selected date is outside the campaign week, move the calendar to the first valid date.
-        if (!isSeminarDateAllowed(selectedDate)) {
-          selectedDate = SEMINAR_START_DATE;
-          document.getElementById('dateFilter').value = selectedDate;
-          await loadData();
-        }
-
-        const quota = getSeminarCodeQuota(selectedDate);
-
-        if (quota.totalUsed >= SEMINAR_TOTAL_LIMIT) {
-          setCodeMessage('Code SEMINARTTC đã sử dụng đủ 42 lượt. Vui lòng liên hệ Admin để được hỗ trợ.', 'error');
-          renderSchedule();
-          return;
-        }
-
-        if (quota.dailyUsed >= SEMINAR_DAILY_LIMIT) {
-          setCodeMessage('Hôm nay đã không còn lượt sử dụng, vui lòng book qua ngày khác.', 'error');
-          renderSchedule();
-          return;
-        }
-
-        verifiedBookingCode = SEMINAR_CODE;
-        verifiedCodeMeta = {
-          code: SEMINAR_CODE,
-          totalUsed: quota.totalUsed,
-          totalRemaining: quota.totalRemaining,
-          dailyUsed: quota.dailyUsed,
-          dailyRemaining: quota.dailyRemaining,
-          customerGroup: 'Seminar TTC'
-        };
-
-        setCodeMessage(
-          '✓ Mã hợp lệ. Vui lòng chọn lịch phù hợp để tiếp tục.',
-          'success'
-        );
-        updateLocationFilter();
         renderSchedule();
         return;
       }
@@ -970,28 +886,6 @@
       return await response.text();
     }
 
-    async function loadExistingCustomerPhonesFromSheet() {
-      const urls = [EXISTING_CUSTOMER_PHONE_CSV_URL, EXISTING_CUSTOMER_PHONE_GVIZ_URL];
-
-      for (const url of urls) {
-        try {
-          const csvText = await fetchCSVText(url);
-          const rows = parseCSVRows(csvText);
-          const phones = extractPhoneSetFromRows(rows);
-
-          if (phones.size) {
-            console.log('Loaded existing customer phones:', phones.size);
-            return phones;
-          }
-        } catch (err) {
-          console.warn('Cannot load existing customer phone list:', err.message);
-        }
-      }
-
-      console.warn('Existing customer phone list is empty or not accessible. SEMINARTTC old-customer exclusion will rely on backend if available.');
-      return new Set();
-    }
-
     function parseCSVRows(csvText) {
       const text = String(csvText || '').replace(/^\uFEFF/, '');
       const rows = [];
@@ -1067,52 +961,6 @@
       }
 
       return dates;
-    }
-
-    async function loadAllBookingsForSeminarValidation() {
-      const map = new Map();
-
-      function addRows(rows) {
-        (rows || []).map(normalizeBookingRow).forEach(function(row) {
-          const key = [
-            normalizeDate(row.date),
-            cleanTime(row.time),
-            cleanText(row.location),
-            cleanText(row.therapist),
-            normalizePhone(row.phone),
-            cleanText(row.memberName)
-          ].join('|');
-          map.set(key, row);
-        });
-      }
-
-      addRows(bookings || []);
-
-      // Some Apps Script deployments only return bookings for the requested date.
-      // For SEMINARTTC phone-lock and weekly quota, explicitly load every date in the campaign week.
-      const dates = getDateRange(SEMINAR_START_DATE, SEMINAR_END_DATE);
-      for (const d of dates) {
-        try {
-          const res = await jsonp(API_URL + '?action=list&date=' + encodeURIComponent(d) + '&v=' + Date.now());
-          if (res && res.success && Array.isArray(res.bookings)) {
-            addRows(res.bookings);
-          }
-        } catch (err) {
-          console.warn('Cannot load seminar bookings for date ' + d + ':', err.message);
-        }
-      }
-
-      // Also try no-date list, in case the backend supports all-bookings response.
-      try {
-        const res = await jsonp(API_URL + '?action=list&v=' + Date.now());
-        if (res && res.success && Array.isArray(res.bookings)) {
-          addRows(res.bookings);
-        }
-      } catch (err) {
-        console.warn('Cannot load all bookings for seminar validation:', err.message);
-      }
-
-      return Array.from(map.values());
     }
 
     function parseCSV(csvText) {
@@ -1208,14 +1056,9 @@
           contracts = await loadContractsFromCSV();
         }
 
-        existingCustomerPhones = await loadExistingCustomerPhonesFromSheet();
-        allBookings = await loadAllBookingsForSeminarValidation();
-
         console.log('Loaded bookings:', bookings.length);
-        console.log('Loaded all bookings for validation:', allBookings.length);
         console.log('Loaded schedule rows:', scheduleRows.length);
         console.log('Loaded contracts:', contracts.length);
-        console.log('Loaded existing customer phones:', existingCustomerPhones.size);
 
         updateLocationFilter();
         renderSchedule();
@@ -1230,34 +1073,15 @@
       const current = select.value;
 
       const allLocations = Array.from(new Set(scheduleRows.map(r => cleanText(r.location)).filter(Boolean)));
-      const seminarMode = isSeminarCodeActive();
-      const allowedLocations = seminarMode
-        ? allLocations.filter(isSeminarLocation)
-        : allLocations;
 
-      select.innerHTML = seminarMode ? '' : '<option value="ALL">Tất cả địa điểm</option>';
+      select.innerHTML = '<option value="ALL">Tất cả địa điểm</option>';
 
-      allowedLocations.forEach(function(loc) {
+      allLocations.forEach(function(loc) {
         const option = document.createElement('option');
         option.value = loc;
         option.textContent = loc;
         select.appendChild(option);
       });
-
-      if (seminarMode) {
-        const seminarLocation = getSeminarLocationValue(allLocations);
-
-        if (!allowedLocations.length) {
-          const option = document.createElement('option');
-          option.value = seminarLocation;
-          option.textContent = seminarLocation;
-          select.appendChild(option);
-        }
-
-        select.value = seminarLocation;
-        select.disabled = true;
-        return;
-      }
 
       select.disabled = false;
 
@@ -1285,11 +1109,9 @@
         return;
       }
 
-      const filtered = isSeminarCodeActive()
-        ? scheduleRows.filter(r => isSeminarLocation(r.location))
-        : (locationFilter === 'ALL'
-          ? scheduleRows
-          : scheduleRows.filter(r => cleanText(r.location) === cleanText(locationFilter)));
+      const filtered = locationFilter === 'ALL'
+        ? scheduleRows
+        : scheduleRows.filter(r => cleanText(r.location) === cleanText(locationFilter));
 
       if (!filtered.length) {
         container.innerHTML = `
@@ -1388,12 +1210,11 @@
         `;
       }
 
-      const quotaCheck = validateSelectedCodeQuota(date);
-      const canBook = currentMode === 'admin' || (!!verifiedBookingCode && quotaCheck.ok);
+      const canBook = currentMode === 'admin' || !!verifiedBookingCode;
       const buttonLabel = currentMode === 'admin' ? 'Đặt lịch' : (verifiedBookingCode ? 'Đặt bằng code' : 'Nhập code trước');
       const buttonHtml = canBook
         ? `<button onclick="openBookingModal('${date}', '${slot}', '${row.location}', '${row.therapist}')">${buttonLabel}</button>`
-        : `<button class="secondary" onclick="setCodeMessage('${escapeJs(quotaCheck.message || 'Vui lòng nhập và xác nhận code trước khi chọn slot.')}', 'error')">${buttonLabel}</button>`;
+        : `<button class="secondary" onclick="setCodeMessage('Vui lòng nhập và xác nhận code trước khi chọn slot.', 'error')">${buttonLabel}</button>`;
 
       return `
         <div class="slot available">
@@ -1426,155 +1247,6 @@
       }
 
       return slots;
-    }
-
-    function isSeminarBooking(row) {
-      // SEMINARTTC is a shared campaign code.
-      // Primary marker should be BOOKINGS column R = SEMINARTTC.
-      // Fallback markers are kept because some Apps Script deployments still block
-      // a repeated bookingCode as "used đủ 1 lần". In that case the frontend sends
-      // bookingCode blank and stores SEMINARTTC in bookingSource/service/note instead.
-      const code = cleanText(row.bookingCode).toUpperCase();
-      const source = cleanText(row.bookingSource).toUpperCase();
-      const service = cleanText(row.service).toUpperCase();
-      const group = cleanText(row.customerGroup).toUpperCase();
-      const note = cleanText(row.note).toUpperCase();
-
-      return code === SEMINAR_CODE ||
-        source === 'SEMINAR TTC' ||
-        service === 'SEMINAR TTC TRIAL' ||
-        group === 'SEMINAR TTC' ||
-        note.includes('[SEMINARTTC]');
-    }
-
-    function isActiveBooking(row) {
-      return cleanText(row.status).toLowerCase() !== 'cancelled';
-    }
-
-    function getSeminarCodeQuota(date) {
-      const sourceBookings = (allBookings && allBookings.length) ? allBookings : bookings;
-      const activeSeminarBookings = (sourceBookings || []).filter(function(b) {
-        return isActiveBooking(b) && isSeminarBooking(b);
-      });
-
-      const totalUsed = activeSeminarBookings.length;
-      const dailyUsed = activeSeminarBookings.filter(function(b) {
-        return normalizeDate(b.date) === date;
-      }).length;
-
-      return {
-        totalUsed: totalUsed,
-        totalRemaining: Math.max(SEMINAR_TOTAL_LIMIT - totalUsed, 0),
-        dailyUsed: dailyUsed,
-        dailyRemaining: Math.max(SEMINAR_DAILY_LIMIT - dailyUsed, 0)
-      };
-    }
-
-    function validateSelectedCodeQuota(date) {
-      if (cleanText(verifiedBookingCode).toUpperCase() !== SEMINAR_CODE) {
-        return { ok: true, message: '' };
-      }
-
-      if (!isSeminarDateAllowed(date)) {
-        return { ok: false, message: getSeminarDateMessage() };
-      }
-
-      const quota = getSeminarCodeQuota(date);
-
-      if (quota.totalUsed >= SEMINAR_TOTAL_LIMIT) {
-        return { ok: false, message: 'Code SEMINARTTC đã sử dụng đủ 42 lượt. Vui lòng liên hệ Admin để được hỗ trợ.' };
-      }
-
-      if (quota.dailyUsed >= SEMINAR_DAILY_LIMIT) {
-        return { ok: false, message: 'Hôm nay đã không còn lượt sử dụng, vui lòng book qua ngày khác.' };
-      }
-
-      verifiedCodeMeta = Object.assign({}, verifiedCodeMeta || {}, quota);
-      return { ok: true, message: '' };
-    }
-
-    function normalizeNameForMatch(name) {
-      return cleanText(name)
-        .toLowerCase()
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/đ/g, 'd')
-        .replace(/[^a-z0-9 ]/g, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-    }
-
-    function getLocalSeminarRegisteredPhones() {
-      try {
-        return JSON.parse(localStorage.getItem(SEMINAR_REGISTERED_PHONES_KEY) || '[]');
-      } catch (err) {
-        return [];
-      }
-    }
-
-    function saveLocalSeminarRegisteredPhone(phone) {
-      const targetPhone = normalizePhone(phone);
-      if (!targetPhone) return;
-
-      const phones = getLocalSeminarRegisteredPhones();
-      if (!phones.includes(targetPhone)) {
-        phones.push(targetPhone);
-        localStorage.setItem(SEMINAR_REGISTERED_PHONES_KEY, JSON.stringify(phones));
-      }
-    }
-
-    function hasExistingSeminarRegistrant(memberName, phone) {
-      const targetPhone = normalizePhone(phone);
-      if (!targetPhone) return false;
-
-      const combined = [];
-      combined.push.apply(combined, allBookings || []);
-      combined.push.apply(combined, bookings || []);
-
-      return combined.some(function(b) {
-        if (!isActiveBooking(b)) return false;
-        if (!isSeminarBooking(b)) return false;
-
-        const bookingPhone = normalizePhone(b.phone);
-        return !!bookingPhone && bookingPhone === targetPhone;
-      });
-    }
-
-    function validateSeminarUniqueRegistrant(memberName, phone) {
-      if (!isSeminarCodeActive()) {
-        return { ok: true, message: '' };
-      }
-
-      if (hasExistingSeminarRegistrant(memberName, phone)) {
-        return {
-          ok: false,
-          message: 'Số điện thoại này đã đăng ký code SEMINARTTC. Mỗi số điện thoại chỉ được đăng ký 1 lần.'
-        };
-      }
-
-      return { ok: true, message: '' };
-    }
-
-    function hasExistingServiceCustomer(phone) {
-      const targetPhone = normalizePhone(phone);
-      if (!targetPhone) return false;
-
-      return existingCustomerPhones && existingCustomerPhones.has(targetPhone);
-    }
-
-    function validateSeminarNewCustomerEligibility(phone) {
-      if (!isSeminarCodeActive()) {
-        return { ok: true, message: '' };
-      }
-
-      if (hasExistingServiceCustomer(phone)) {
-        return {
-          ok: false,
-          message: 'Số điện thoại này đã từng sử dụng dịch vụ ProPhysio và không thuộc đối tượng tham gia chương trình Trial Seminar TTC.'
-        };
-      }
-
-      return { ok: true, message: '' };
     }
 
     function normalizePhone(phone) {
@@ -1837,21 +1509,6 @@
         return;
       }
 
-      if (currentMode === 'code') {
-        const quotaCheck = validateSelectedCodeQuota(date);
-        if (!quotaCheck.ok) {
-          setCodeMessage(quotaCheck.message, 'error');
-          renderSchedule();
-          return;
-        }
-
-        if (isSeminarCodeActive() && !isSeminarLocation(location)) {
-          setCodeMessage('Code SEMINARTTC chỉ được sử dụng tại TTC.', 'error');
-          renderSchedule();
-          return;
-        }
-      }
-
       document.getElementById('selectedDate').value = date;
       document.getElementById('selectedTime').value = time;
       document.getElementById('selectedLocation').value = location;
@@ -1914,51 +1571,10 @@
       setCodeMessage('Đang xử lý đặt lịch...', '');
 
       try {
-        if (isSeminarCodeActive()) {
-          // Refresh seminar-week bookings immediately before final submit,
-          // so the same phone cannot book twice from another tab/device after the page loaded.
-          allBookings = await loadAllBookingsForSeminarValidation();
-        }
-
-        const uniqueCheck = validateSeminarUniqueRegistrant(memberName, phone);
-        if (!uniqueCheck.ok) {
-          alert(uniqueCheck.message);
-          setCodeMessage(uniqueCheck.message, 'error');
-          resetSubmitButton();
-          return;
-        }
-
-        const newCustomerCheck = validateSeminarNewCustomerEligibility(phone);
-        if (!newCustomerCheck.ok) {
-          alert(newCustomerCheck.message);
-          setCodeMessage(newCustomerCheck.message, 'error');
-          resetSubmitButton();
-          return;
-        }
-
         if (currentMode === 'code' && !verifiedBookingCode) {
           alert('Vui lòng xác nhận code trước khi đặt lịch.');
           resetSubmitButton();
           return;
-        }
-
-        if (currentMode === 'code') {
-          const quotaCheck = validateSelectedCodeQuota(document.getElementById('selectedDate').value);
-          if (!quotaCheck.ok) {
-            alert(quotaCheck.message);
-            setCodeMessage(quotaCheck.message, 'error');
-            closeModal();
-            renderSchedule();
-            return;
-          }
-
-          if (isSeminarCodeActive() && !isSeminarLocation(document.getElementById('selectedLocation').value)) {
-            alert('Code SEMINARTTC chỉ được sử dụng tại TTC.');
-            setCodeMessage('Code SEMINARTTC chỉ được sử dụng tại TTC.', 'error');
-            closeModal();
-            renderSchedule();
-            return;
-          }
         }
 
         const paramsObj = {
@@ -1969,18 +1585,13 @@
           therapist: document.getElementById('selectedTherapist').value,
           memberName: memberName,
           phone: phone,
-          service: isSeminarCodeActive() ? 'Seminar TTC Trial' : '',
+          service: '',
           status: 'booked',
-          bookingSource: currentMode === 'admin' ? 'Admin Booking' : (isSeminarCodeActive() ? 'Seminar TTC' : 'Code Booking'),
-          customerGroup: currentMode === 'code' ? (isSeminarCodeActive() ? 'Seminar TTC' : pickValue(verifiedCodeMeta, ['customerGroup', 'Customer Group', 'group'], '')) : '',
-          seminarUniqueRule: isSeminarCodeActive() ? '1 phone number = 1 booking by last 9 digits; exclude existing service customers from Sheet column G Phone' : '',
-          note: isSeminarCodeActive() ? (document.getElementById('note').value + ' [SEMINARTTC]').trim() : document.getElementById('note').value
+          bookingSource: currentMode === 'admin' ? 'Admin Booking' : 'Code Booking',
+          customerGroup: currentMode === 'code' ? pickValue(verifiedCodeMeta, ['customerGroup', 'Customer Group', 'group'], '') : '',
+          note: document.getElementById('note').value
         };
-
-        // SEMINARTTC là shared campaign code, KHÔNG gửi field bookingCode lên API.
-        // Nếu gửi bookingCode dù là rỗng, một số Apps Script vẫn tự ghi/validate như code thường.
-        // Booking seminar sẽ được nhận diện qua bookingSource/service/customerGroup/note.
-        if (currentMode === 'code' && !isSeminarCodeActive()) {
+        if (currentMode === 'code') {
           paramsObj.bookingCode = verifiedBookingCode;
         }
 
@@ -1991,7 +1602,6 @@
         alert(res.message || 'Đã xử lý xong.');
 
         if (res.success) {
-          // Seminar bookings are marked by source/service/group/note; normal codes still use column R.
           closeModal();
           clearForm();
           await loadData();
