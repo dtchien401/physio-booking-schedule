@@ -603,6 +603,7 @@
     </section>
 
     <div id="modeWarning" class="soft-warning">
+      Chế độ khách: chỉ hiển thị slot còn trống / đã kín. Thông tin khách khác được ẩn để tránh nhầm lẫn và bảo mật dữ liệu.
     </div>
 
     <main id="schedule">
@@ -753,6 +754,10 @@
       return '';
     }
 
+    function isVerifiedCampaignCode() {
+      return !!(verifiedCodeMeta && verifiedCodeMeta.isSeminarCode);
+    }
+
     function isVerifiedSeminarCode() {
       return !!getSeminarLocationKeyword(verifiedBookingCode);
     }
@@ -831,10 +836,11 @@
         const remaining = pickValue(verifiedCodeMeta, ['remaining', 'Remaining', 'remainingUses'], '');
         const used = pickValue(verifiedCodeMeta, ['used', 'Used', 'usedCount'], '');
         const group = pickValue(verifiedCodeMeta, ['customerGroup', 'Customer Group', 'group'], '');
+        const isCampaignCode = !!verifiedCodeMeta.isSeminarCode;
 
         // Frontend guard for normal codes: 1 code = 1 session only.
         // Apps Script action=verifyCode should also enforce the same rule server-side.
-        if ((remaining !== '' && Number(remaining) <= 0) || (used !== '' && Number(used) >= 1)) {
+        if (!isCampaignCode && ((remaining !== '' && Number(remaining) <= 0) || (used !== '' && Number(used) >= 1))) {
           verifiedBookingCode = null;
           verifiedCodeMeta = null;
           setCodeMessage('Code này đã được sử dụng. Mỗi code chỉ được book 1 session.', 'error');
@@ -850,7 +856,9 @@
         const seminarKeyword = getSeminarLocationKeyword(verifiedBookingCode);
         const successMessage = seminarKeyword
           ? '✓ Mã hợp lệ. Code ' + verifiedBookingCode + ' chỉ áp dụng tại club ' + seminarKeyword + '. Vui lòng chọn lịch phù hợp để tiếp tục.'
-          : '✓ Mã hợp lệ. Vui lòng chọn lịch phù hợp để tiếp tục.';
+          : (isCampaignCode
+            ? '✓ Mã hợp lệ. Code ' + verifiedBookingCode + ' dùng được nhiều lần, nhưng mỗi số điện thoại chỉ được sử dụng 1 lần.'
+            : '✓ Mã hợp lệ. Vui lòng chọn lịch phù hợp để tiếp tục.');
         setCodeMessage(successMessage, 'success');
         renderSchedule();
       } catch (err) {
@@ -862,18 +870,32 @@
     function jsonp(url) {
       return new Promise(function(resolve, reject) {
         const callback = 'cb_' + Date.now() + '_' + Math.floor(Math.random() * 10000);
+        let script;
+
+        function cleanup() {
+          if (window[callback]) delete window[callback];
+          if (script && script.parentNode) script.parentNode.removeChild(script);
+        }
+
+        const timer = setTimeout(function() {
+          cleanup();
+          reject(new Error('API timeout: Apps Script không trả response JSONP. Kiểm tra doGet/action book/callback.'));
+        }, 20000);
 
         window[callback] = function(data) {
+          clearTimeout(timer);
+          cleanup();
           resolve(data);
-          delete window[callback];
-          script.remove();
         };
 
-        const script = document.createElement('script');
+        script = document.createElement('script');
+        script.async = true;
         const separator = url.includes('?') ? '&' : '?';
         script.src = url + separator + 'callback=' + callback;
         script.onerror = function() {
-          reject(new Error('Không thể kết nối API Google Apps Script'));
+          clearTimeout(timer);
+          cleanup();
+          reject(new Error('Không thể kết nối API Google Apps Script. Có thể Web App chưa Deploy/không để Anyone access/URL sai.'));
         };
 
         document.body.appendChild(script);
@@ -1665,7 +1687,7 @@
 
             // Normal one-time codes should not stay reusable on the screen.
             // Seminar codes can remain active so another interested guest can book with the same campaign code.
-            if (!getSeminarLocationKeyword(successfulCode)) {
+            if (!isVerifiedCampaignCode()) {
               verifiedBookingCode = null;
               verifiedCodeMeta = null;
               document.getElementById('bookingCodeInput').value = '';
@@ -1677,7 +1699,8 @@
           resetSubmitButton();
         }
       } catch (err) {
-        alert('Không gửi được booking. Vui lòng kiểm tra API.');
+        console.error('BOOKING API ERROR:', err);
+        alert('Không gửi được booking. Lỗi API: ' + (err && err.message ? err.message : err));
         resetSubmitButton();
       }
     }
