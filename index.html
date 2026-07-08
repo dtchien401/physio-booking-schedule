@@ -550,10 +550,17 @@
     </header>
 
     <section class="mode-tabs">
+      <button id="openTabBtn" class="mode-tab" onclick="switchMode('open')">Đặt Trial (Ai cũng đặt được)</button>
       <button id="codeTabBtn" class="mode-tab active" onclick="switchMode('code')">Book bằng Code</button>
       <button id="adminTabBtn" class="mode-tab hidden" onclick="switchMode('admin')">Booking thường</button>
       <button id="adminLoginToggle" class="mode-tab" onclick="toggleAdminLogin()">Admin Login</button>
       <button id="adminLogoutBtn" class="mode-tab hidden" onclick="logoutAdmin()">Đăng xuất Admin</button>
+    </section>
+
+    <section id="openAccessPanel" class="access-panel hidden">
+      <div class="access-message">
+        Đặt lịch trial công khai — không cần nhập code. Mỗi số điện thoại chỉ được đặt trial 1 lần trên toàn hệ thống (áp dụng chéo với các code trial/campaign khác).
+      </div>
     </section>
 
     <section id="codeAccessPanel" class="access-panel">
@@ -665,6 +672,11 @@
     let verifiedCodeMeta = null;
     let isSubmittingBooking = false;
 
+    // Tab "Đặt Trial (Ai cũng đặt được)": không cần khách nhập code.
+    // Frontend tự gán ngầm 1 code cố định (đã khai báo trong SEMINAR_CODES ở Apps Script)
+    // để tái sử dụng toàn bộ logic quota / chống trùng SĐT đã có sẵn ở backend, không cần viết logic mới.
+    const OPEN_TRIAL_CODE = 'OPENTRIAL';
+
     const ADMIN_SESSION_KEY = 'physio_admin_loggedin';
 
     document.addEventListener('DOMContentLoaded', function () {
@@ -707,27 +719,46 @@
       }
 
       currentMode = mode;
+
+      if (mode === 'open') {
+        // Không cần gọi verifyCode: OPENTRIAL không giới hạn location/ngày/quota,
+        // chỉ chặn theo SĐT (kiểm tra ở backend lúc submit, giống các seminar code khác).
+        verifiedBookingCode = OPEN_TRIAL_CODE;
+        verifiedCodeMeta = { isSeminarCode: true, group: 'Open Trial', source: 'Open Trial', service: 'Trial tự đặt' };
+      } else if (mode !== 'code') {
+        verifiedBookingCode = null;
+        verifiedCodeMeta = null;
+      }
+
       updateModeUI();
+      updateLocationFilter();
       renderSchedule();
     }
 
     function updateModeUI() {
       const isCode = currentMode === 'code';
       const isAdmin = currentMode === 'admin';
+      const isOpen = currentMode === 'open';
 
+      document.getElementById('openTabBtn').classList.toggle('active', isOpen);
       document.getElementById('codeTabBtn').classList.toggle('active', isCode);
       document.getElementById('adminTabBtn').classList.toggle('active', isAdmin);
       document.getElementById('adminTabBtn').classList.toggle('hidden', !isAdminLoggedIn);
       document.getElementById('adminLogoutBtn').classList.toggle('hidden', !isAdminLoggedIn);
       document.getElementById('adminLoginToggle').classList.toggle('hidden', isAdminLoggedIn);
+      document.getElementById('openAccessPanel').classList.toggle('hidden', !isOpen);
       document.getElementById('codeAccessPanel').classList.toggle('hidden', !isCode);
       document.getElementById('modeWarning').classList.toggle('hidden', isAdmin);
 
       const notice = document.getElementById('pageNotice');
       if (notice) {
-        notice.innerText = isAdmin
-          ? 'Admin mode: slot xanh nhạt = còn trống, xanh đậm = đã đặt, xám = đã qua giờ. Khi đã đặt, hệ thống map SĐT với sheet contract để hiện Gói / Đã dùng / Còn lại.'
-          : 'Customer mode: slot xanh nhạt = còn trống, xanh đậm = đã kín, xám = đã qua giờ. Rule code được kiểm tra bởi Apps Script khi submit.';
+        if (isAdmin) {
+          notice.innerText = 'Admin mode: slot xanh nhạt = còn trống, xanh đậm = đã đặt, xám = đã qua giờ. Khi đã đặt, hệ thống map SĐT với sheet contract để hiện Gói / Đã dùng / Còn lại.';
+        } else if (isOpen) {
+          notice.innerText = 'Trial công khai: ai cũng đặt được, không cần code. Mỗi số điện thoại chỉ được đặt trial 1 lần trên toàn hệ thống.';
+        } else {
+          notice.innerText = 'Customer mode: slot xanh nhạt = còn trống, xanh đậm = đã kín, xám = đã qua giờ. Rule code được kiểm tra bởi Apps Script khi submit.';
+        }
       }
     }
 
@@ -1281,8 +1312,10 @@
         `;
       }
 
-      const canBook = currentMode === 'admin' || !!verifiedBookingCode;
-      const buttonLabel = currentMode === 'admin' ? 'Đặt lịch' : (verifiedBookingCode ? 'Đặt bằng code' : 'Nhập code trước');
+      const canBook = currentMode === 'admin' || currentMode === 'open' || !!verifiedBookingCode;
+      const buttonLabel = currentMode === 'admin'
+        ? 'Đặt lịch'
+        : (currentMode === 'open' ? 'Đặt lịch Trial' : (verifiedBookingCode ? 'Đặt bằng code' : 'Nhập code trước'));
       const buttonHtml = canBook
         ? `<button onclick="openBookingModal('${date}', '${slot}', '${row.location}', '${row.therapist}')">${buttonLabel}</button>`
         : `<button class="secondary" onclick="setCodeMessage('Vui lòng nhập và xác nhận code trước khi chọn slot.', 'error')">${buttonLabel}</button>`;
@@ -1591,7 +1624,9 @@
       document.getElementById('selectedTherapist').value = therapist;
 
       document.getElementById('bookingSummary').innerText =
-        'Chế độ: ' + (currentMode === 'admin' ? 'Booking thường / Admin' : 'Book bằng code ' + verifiedBookingCode) + '\n' +
+        'Chế độ: ' + (currentMode === 'admin'
+          ? 'Booking thường / Admin'
+          : (currentMode === 'open' ? 'Đặt Trial công khai' : 'Book bằng code ' + verifiedBookingCode)) + '\n' +
         'Ngày: ' + date + '\n' +
         'Giờ: ' + time + '\n' +
         'Địa điểm: ' + location + '\n' +
@@ -1647,7 +1682,7 @@
       setCodeMessage('Đang xử lý đặt lịch...', '');
 
       try {
-        if (currentMode === 'code' && !verifiedBookingCode) {
+        if ((currentMode === 'code' || currentMode === 'open') && !verifiedBookingCode) {
           alert('Vui lòng xác nhận code trước khi đặt lịch.');
           resetSubmitButton();
           return;
@@ -1663,11 +1698,11 @@
           phone: phone,
           service: '',
           status: 'booked',
-          bookingSource: currentMode === 'admin' ? 'Admin Booking' : 'Code Booking',
-          customerGroup: currentMode === 'code' ? pickValue(verifiedCodeMeta, ['customerGroup', 'Customer Group', 'group'], '') : '',
+          bookingSource: currentMode === 'admin' ? 'Admin Booking' : (currentMode === 'open' ? 'Open Trial Booking' : 'Code Booking'),
+          customerGroup: (currentMode === 'code' || currentMode === 'open') ? pickValue(verifiedCodeMeta, ['customerGroup', 'Customer Group', 'group'], '') : '',
           note: document.getElementById('note').value
         };
-        if (currentMode === 'code') {
+        if (currentMode === 'code' || currentMode === 'open') {
           paramsObj.bookingCode = verifiedBookingCode;
         }
 
