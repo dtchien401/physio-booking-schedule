@@ -335,6 +335,155 @@
       white-space: nowrap;
     }
 
+    /* ── Calendar grid view ─────────────────────────────── */
+
+    .calendar-legend {
+      display: flex;
+      gap: 18px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+      font-size: 13px;
+      color: var(--text);
+      background: rgba(255,255,255,0.9);
+      padding: 12px 16px;
+      border-radius: 16px;
+      box-shadow: 0 8px 22px rgba(37,99,235,0.06);
+      border: 1px solid rgba(96,165,250,0.16);
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .legend-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 5px;
+      display: inline-block;
+      flex-shrink: 0;
+    }
+
+    .legend-available { background: #22c55e; }
+    .legend-booked { background: #ef4444; }
+    .legend-event { background: #8b5cf6; }
+    .legend-outside { background: #94a3b8; }
+
+    .calendar-scroll {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 4px;
+    }
+
+    .calendar-grid {
+      display: grid;
+      gap: 6px;
+      min-width: max-content;
+    }
+
+    .cal-corner {
+      font-size: 12px;
+      font-weight: bold;
+      color: var(--muted);
+    }
+
+    .cal-corner,
+    .cal-time {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px 4px;
+    }
+
+    .cal-time {
+      font-size: 12px;
+      font-weight: bold;
+      color: #1e40af;
+    }
+
+    .cal-header {
+      text-align: center;
+      padding: 8px 6px;
+      font-weight: bold;
+      font-size: 13px;
+      color: #0f3ea8;
+      background: rgba(37,99,235,0.06);
+      border-radius: 12px;
+    }
+
+    .cal-header-shift {
+      font-weight: normal;
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 2px;
+    }
+
+    .cal-cell {
+      min-height: 58px;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      font-size: 12px;
+      padding: 4px 6px;
+      line-height: 1.35;
+      transition: 0.15s ease;
+    }
+
+    .cal-cell-title {
+      font-weight: bold;
+      font-size: 12px;
+      max-width: 120px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .cal-cell-sub {
+      font-size: 11px;
+      opacity: 0.85;
+      margin-top: 1px;
+    }
+
+    .cal-available {
+      background: linear-gradient(135deg, #dcfce7, #bbf7d0);
+      color: #15803d;
+      border: 1px solid rgba(34,197,94,0.35);
+      cursor: pointer;
+    }
+
+    .cal-available:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 18px rgba(34,197,94,0.22);
+    }
+
+    .cal-booked {
+      background: linear-gradient(135deg, #fee2e2, #fecaca);
+      color: #b91c1c;
+      border: 1px solid rgba(239,68,68,0.35);
+    }
+
+    .cal-event {
+      background: linear-gradient(135deg, #ede9fe, #ddd6fe);
+      color: #6d28d9;
+      border: 1px solid rgba(139,92,246,0.4);
+    }
+
+    .cal-outside {
+      background: #e2e8f0;
+      color: #94a3b8;
+      border: 1px solid rgba(148,163,184,0.25);
+      cursor: default;
+    }
+
+    @media (max-width: 768px) {
+      .cal-cell { min-height: 50px; font-size: 11px; }
+      .cal-cell-title { max-width: 90px; }
+    }
+
     .loading, .empty {
       background: rgba(255,255,255,0.9);
       padding: 24px;
@@ -613,12 +762,19 @@
       Chế độ khách: chỉ hiển thị slot còn trống / đã kín. Thông tin khách khác được ẩn để tránh nhầm lẫn và bảo mật dữ liệu.
     </div>
 
+    <div class="calendar-legend">
+      <span class="legend-item"><span class="legend-dot legend-available"></span> Còn trống (bấm để đặt)</span>
+      <span class="legend-item"><span class="legend-dot legend-booked"></span> Đã có người đặt</span>
+      <span class="legend-item"><span class="legend-dot legend-event"></span> Khóa lịch do event</span>
+      <span class="legend-item"><span class="legend-dot legend-outside"></span> Ngoài giờ hoạt động</span>
+    </div>
+
     <main id="schedule">
       <div class="loading">Đang tải dữ liệu đặt lịch...</div>
     </main>
 
     <div class="notice" id="pageNotice">
-      Slot xanh nhạt = còn trống, xanh đậm = đã đặt/kín, xám = đã qua giờ. Admin login để dùng booking thường và xem chi tiết khách hàng.
+      Admin login để dùng booking thường, khóa lịch do event, và xem chi tiết khách hàng.
     </div>
   </div>
 
@@ -633,12 +789,19 @@
 
       <div class="summary" id="bookingSummary"></div>
 
-      <div class="form-group">
-        <label>Tên hội viên</label>
-        <input id="memberName" placeholder="Nhập tên hội viên" />
+      <div class="form-group hidden" id="eventLockGroup">
+        <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">
+          <input type="checkbox" id="isEventLock" style="width:auto;" onchange="toggleEventLockFields()" />
+          Đây là khóa lịch do event (không phải khách đặt)
+        </label>
       </div>
 
       <div class="form-group">
+        <label id="memberNameLabel">Tên hội viên</label>
+        <input id="memberName" placeholder="Nhập tên hội viên" />
+      </div>
+
+      <div class="form-group" id="phoneGroup">
         <label>Số điện thoại</label>
         <input id="phone" type="text" inputmode="numeric" maxlength="10" pattern="0[0-9]{9}" placeholder="VD: 0909289333" autocomplete="tel" />
       </div>
@@ -753,11 +916,11 @@
       const notice = document.getElementById('pageNotice');
       if (notice) {
         if (isAdmin) {
-          notice.innerText = 'Admin mode: slot xanh nhạt = còn trống, xanh đậm = đã đặt, xám = đã qua giờ. Khi đã đặt, hệ thống map SĐT với sheet contract để hiện Gói / Đã dùng / Còn lại.';
+          notice.innerText = 'Admin mode: bấm ô xanh để đặt lịch cho khách, hoặc tick "Khóa lịch do event" để chặn slot không cho đặt. Ô đã đặt hiện tên/SĐT + hợp đồng (nếu có).';
         } else if (isOpen) {
           notice.innerText = 'Trial công khai: ai cũng đặt được, không cần code. Mỗi số điện thoại chỉ được đặt trial 1 lần trên toàn hệ thống.';
         } else {
-          notice.innerText = 'Customer mode: slot xanh nhạt = còn trống, xanh đậm = đã kín, xám = đã qua giờ. Rule code được kiểm tra bởi Apps Script khi submit.';
+          notice.innerText = 'Customer mode: bấm ô xanh để đặt lịch. Rule code được kiểm tra bởi Apps Script khi submit.';
         }
       }
     }
@@ -1229,38 +1392,82 @@
 
       locations.forEach(function(location) {
         const rows = filtered.filter(r => cleanText(r.location) === cleanText(location));
-
-        const card = document.createElement('section');
-        card.className = 'location-card';
-
-        card.innerHTML = `
-          <h2>${location}</h2>
-          <div class="therapist-grid">
-            ${rows.map(function(row) {
-              return renderTherapist(row, date);
-            }).join('')}
-          </div>
-        `;
-
-        container.appendChild(card);
+        container.appendChild(renderLocationCalendar(location, rows, date));
       });
     }
 
-    function renderTherapist(row, date) {
-      const slots = generateSlots(row.start, row.end, row.lunchBreak);
+    // Toàn bộ therapist trong 1 location được xếp thành các cột của 1 lưới (calendar grid),
+    // trục giờ (hàng) chạy từ giờ bắt đầu sớm nhất tới giờ kết thúc trễ nhất trong ngày,
+    // để tất cả các cột thẳng hàng nhau theo cùng 1 mốc giờ.
+    function renderLocationCalendar(location, rows, date) {
+      const axisSlots = buildTimeAxis(rows);
 
-      return `
-        <div class="therapist-card">
-          <h3>${row.therapist}</h3>
-          <div class="shift">${row.note || 'Lịch làm việc'} | ${row.start} - ${row.end}</div>
-          ${slots.map(function(slot) {
-            return renderSlot(row, date, slot);
-          }).join('')}
+      const card = document.createElement('section');
+      card.className = 'location-card';
+
+      const headerCells = rows.map(function(row) {
+        return `<div class="cal-header">${escapeHtml(row.therapist)}<div class="cal-header-shift">${escapeHtml(row.start)} - ${escapeHtml(row.end)}</div></div>`;
+      }).join('');
+
+      const bodyCells = axisSlots.map(function(slot) {
+        const timeCell = `<div class="cal-time">${slot.split('-')[0]}</div>`;
+        const rowCells = rows.map(function(row) {
+          return renderCalendarCell(row, date, slot);
+        }).join('');
+        return timeCell + rowCells;
+      }).join('');
+
+      card.innerHTML = `
+        <h2>${escapeHtml(location)}</h2>
+        <div class="calendar-scroll">
+          <div class="calendar-grid" style="grid-template-columns: 64px repeat(${rows.length}, minmax(130px, 1fr));">
+            <div class="cal-corner">Giờ</div>
+            ${headerCells}
+            ${bodyCells}
+          </div>
         </div>
       `;
+
+      return card;
     }
 
-    function renderSlot(row, date, slot) {
+    // Gộp tất cả giờ làm việc (start→end) của mọi KTV trong location này thành 1 trục giờ chung.
+    function buildTimeAxis(rows) {
+      const startHours = rows.map(r => Number(String(r.start).split(':')[0])).filter(n => !isNaN(n));
+      const endHours = rows.map(r => Number(String(r.end).split(':')[0])).filter(n => !isNaN(n));
+
+      const axisStart = startHours.length ? Math.min.apply(null, startHours) : 8;
+      const axisEnd = endHours.length ? Math.max.apply(null, endHours) : 20;
+
+      const slots = [];
+      for (let h = axisStart; h < axisEnd; h++) {
+        slots.push(String(h).padStart(2, '0') + ':00-' + String(h + 1).padStart(2, '0') + ':00');
+      }
+      return slots;
+    }
+
+    function isWithinShift(row, slot) {
+      const lunch = cleanTime(row.lunchBreak || '');
+      if (lunch && cleanTime(slot) === lunch) return false;
+
+      const startHour = Number(String(row.start).split(':')[0]);
+      const endHour = Number(String(row.end).split(':')[0]);
+      const slotHour = Number(slot.split(':')[0]);
+
+      return slotHour >= startHour && slotHour < endHour;
+    }
+
+    function renderCalendarCell(row, date, slot) {
+      // Ngoài giờ hoạt động của KTV này (chưa vào ca / đã hết ca / giờ nghỉ trưa) → xám.
+      if (!isWithinShift(row, slot)) {
+        return `<div class="cal-cell cal-outside" title="Ngoài giờ hoạt động">·</div>`;
+      }
+
+      // Giờ đã qua trong ngày hôm nay → cũng xám, không cho đặt.
+      if (isPastSlot(date, slot)) {
+        return `<div class="cal-cell cal-outside" title="Đã qua giờ">·</div>`;
+      }
+
       const booking = bookings.find(function(b) {
         return normalizeDate(b.date) === date &&
           cleanTime(b.time) === cleanTime(slot) &&
@@ -1269,88 +1476,63 @@
           cleanText(b.status).toLowerCase() !== 'cancelled';
       });
 
-      const isPast = isPastSlot(date, slot);
-
       if (booking) {
+        // Convention: admin khóa lịch do event sẽ gửi status = "event" (xem toggleEventLockFields()).
+        // Apps Script ghi nguyên status này vào cột Status/status, không ép về "Booked" nữa.
+        const rawStatus = cleanText(booking.status).toLowerCase();
+        const isEventLock = rawStatus === 'event' || rawStatus.indexOf('khóa') >= 0 || rawStatus.indexOf('lock') >= 0;
+
+        if (isEventLock) {
+          const label = booking.memberName || 'Khóa lịch (Event)';
+          return `
+            <div class="cal-cell cal-event" title="${escapeHtml(booking.note || label)}">
+              <div class="cal-cell-title">🔒 ${escapeHtml(label)}</div>
+            </div>
+          `;
+        }
+
         if (currentMode !== 'admin') {
           return `
-            <div class="slot booked">
-              <div>
-                <strong>${slot}</strong>
-                <div class="booked-info">Slot này đã kín</div>
-              </div>
-              <span class="status-pill">Đã kín</span>
+            <div class="cal-cell cal-booked" title="Slot này đã kín">
+              <div class="cal-cell-title">Đã kín</div>
             </div>
           `;
         }
 
         const contract = findContractByPhone(booking.phone);
-        const contractHtml = renderContractInfo(contract, booking.phone);
+        const contractLine = contract
+          ? `<div class="cal-cell-sub">Còn ${escapeHtml(contract.remainingSessions)}/${escapeHtml(contract.totalSessions)} buổi</div>`
+          : (booking.phone ? '<div class="cal-cell-sub">⚠️ Chưa có HĐ</div>' : '');
+        const tooltipParts = [
+          booking.memberName || '',
+          booking.phone || '',
+          booking.note || ''
+        ].filter(Boolean);
 
         return `
-          <div class="slot booked">
-            <div>
-              <strong>${slot}</strong>
-              <div class="booked-info">
-                <div class="booked-name">${escapeHtml(booking.memberName || contract?.memberName || 'Đã đặt lịch')}</div>
-                <div>${booking.phone ? '📞 ' + escapeHtml(booking.phone) : ''}</div>
-                ${contractHtml}
-                ${booking.note ? '<div class="booked-note">📝 ' + escapeHtml(booking.note) + '</div>' : ''}
-              </div>
-            </div>
-            <span class="status-pill">Đã đặt</span>
-          </div>
-        `;
-      }
-
-      if (isPast) {
-        return `
-          <div class="slot closed">
-            <strong>${slot}</strong>
-            <span class="status-pill">Đã qua</span>
+          <div class="cal-cell cal-booked" title="${escapeHtml(tooltipParts.join(' | '))}">
+            <div class="cal-cell-title">${escapeHtml(booking.memberName || (contract && contract.memberName) || 'Đã đặt')}</div>
+            ${booking.phone ? '<div class="cal-cell-sub">' + escapeHtml(booking.phone) + '</div>' : ''}
+            ${contractLine}
           </div>
         `;
       }
 
       const canBook = currentMode === 'admin' || currentMode === 'open' || !!verifiedBookingCode;
-      const buttonLabel = currentMode === 'admin'
-        ? 'Đặt lịch'
-        : (currentMode === 'open' ? 'Đặt lịch Trial' : (verifiedBookingCode ? 'Đặt bằng code' : 'Nhập code trước'));
-      const buttonHtml = canBook
-        ? `<button onclick="openBookingModal('${date}', '${slot}', '${row.location}', '${row.therapist}')">${buttonLabel}</button>`
-        : `<button class="secondary" onclick="setCodeMessage('Vui lòng nhập và xác nhận code trước khi chọn slot.', 'error')">${buttonLabel}</button>`;
 
-      return `
-        <div class="slot available">
-          <strong>${slot}</strong>
-          ${buttonHtml}
-        </div>
-      `;
-    }
-
-    function generateSlots(start, end, lunchBreak) {
-      const slots = [];
-
-      let startHour = Number(start.split(':')[0]);
-      const endHour = Number(end.split(':')[0]);
-
-      const lunch = cleanTime(lunchBreak || '');
-
-      while (startHour < endHour) {
-        const from = String(startHour).padStart(2, '0') + ':00';
-        const to = String(startHour + 1).padStart(2, '0') + ':00';
-        const slot = from + '-' + to;
-
-        if (lunch && cleanTime(slot) === lunch) {
-          startHour++;
-          continue;
-        }
-
-        slots.push(slot);
-        startHour++;
+      if (!canBook) {
+        return `
+          <div class="cal-cell cal-available" title="Nhập code trước" onclick="setCodeMessage('Vui lòng nhập và xác nhận code trước khi chọn slot.', 'error')">
+            <div class="cal-cell-title">Nhập code</div>
+          </div>
+        `;
       }
 
-      return slots;
+      return `
+        <div class="cal-cell cal-available" title="Bấm để đặt lịch" onclick="openBookingModal('${escapeJs(date)}', '${escapeJs(slot)}', '${escapeJs(row.location)}', '${escapeJs(row.therapist)}')">
+          <div class="cal-cell-title">+ Đặt</div>
+        </div>
+      `;
     }
 
     function normalizePhone(phone) {
@@ -1479,7 +1661,7 @@
       const targetPhone = normalizePhone(phone);
       if (!targetPhone) return null;
 
-      const activeContracts = (contracts || [])
+      const matched = (contracts || [])
         .map(normalizeContract)
         .filter(Boolean)
         .filter(c => {
@@ -1491,13 +1673,31 @@
           );
         });
 
-      console.log('BOOKING PHONE MAP:', phone, '=>', targetPhone, 'MATCHES:', activeContracts);
+      console.log('BOOKING PHONE MAP:', phone, '=>', targetPhone, 'MATCHES:', matched);
 
-      if (!activeContracts.length) return null;
+      if (!matched.length) return null;
 
-      // If a client has multiple contracts, show the one with remaining sessions first.
-      activeContracts.sort((a, b) => b.remainingSessions - a.remainingSessions);
-      return activeContracts[0];
+      // "Hợp đồng đang dùng" xác định qua cột used:
+      // 1) Ưu tiên HĐ đã bắt đầu dùng (used > 0) và còn buổi (remaining > 0) — đây là HĐ đang dùng dở.
+      //    Nếu hội viên có nhiều hơn 1 HĐ đang dùng dở (hiếm), lấy HĐ có used cao nhất (gần dùng hết nhất).
+      const inProgress = matched
+        .filter(c => c.usedSessions > 0 && c.remainingSessions > 0)
+        .sort((a, b) => b.usedSessions - a.usedSessions);
+
+      if (inProgress.length) return inProgress[0];
+
+      // 2) Không có HĐ nào đang dùng dở (VD: hội viên mới, chưa book buổi nào) →
+      //    lấy HĐ còn buổi nhiều nhất trong số HĐ chưa đụng tới (used = 0).
+      const notStarted = matched
+        .filter(c => c.remainingSessions > 0)
+        .sort((a, b) => b.remainingSessions - a.remainingSessions);
+
+      if (notStarted.length) return notStarted[0];
+
+      // 3) Tất cả HĐ đều đã dùng hết (remaining = 0) → vẫn trả về 1 HĐ để hiển thị cho admin biết,
+      //    ưu tiên HĐ có used cao nhất (HĐ gần nhất/mới nhất được dùng).
+      const exhausted = matched.slice().sort((a, b) => b.usedSessions - a.usedSessions);
+      return exhausted[0] || null;
     }
 
     function renderContractInfo(contract, phone) {
@@ -1632,7 +1832,21 @@
         'Địa điểm: ' + location + '\n' +
         'KTV: ' + therapist;
 
+      // Chỉ admin mới được phép khóa lịch do event (chặn slot mà không cần thông tin khách).
+      document.getElementById('eventLockGroup').classList.toggle('hidden', currentMode !== 'admin');
+      document.getElementById('isEventLock').checked = false;
+      toggleEventLockFields();
+
       document.getElementById('bookingModal').style.display = 'flex';
+    }
+
+    function toggleEventLockFields() {
+      const checkbox = document.getElementById('isEventLock');
+      const isEvent = !!(checkbox && checkbox.checked);
+
+      document.getElementById('memberNameLabel').innerText = isEvent ? 'Tên sự kiện' : 'Tên hội viên';
+      document.getElementById('memberName').placeholder = isEvent ? 'VD: Họp nội bộ, bảo trì phòng...' : 'Nhập tên hội viên';
+      document.getElementById('phoneGroup').classList.toggle('hidden', isEvent);
     }
 
     function closeModal() {
@@ -1659,22 +1873,27 @@
     async function submitBooking() {
       if (isSubmittingBooking) return;
 
+      const eventLockCheckbox = document.getElementById('isEventLock');
+      const isEventLock = currentMode === 'admin' && !!(eventLockCheckbox && eventLockCheckbox.checked);
+
       const memberName = document.getElementById('memberName').value.trim();
-      const phone = document.getElementById('phone').value.trim();
+      const phone = isEventLock ? '' : document.getElementById('phone').value.trim();
 
       if (!memberName) {
-        alert('Vui lòng nhập tên hội viên.');
+        alert(isEventLock ? 'Vui lòng nhập tên sự kiện.' : 'Vui lòng nhập tên hội viên.');
         return;
       }
 
-      if (!phone) {
-        alert('Vui lòng nhập số điện thoại.');
-        return;
-      }
+      if (!isEventLock) {
+        if (!phone) {
+          alert('Vui lòng nhập số điện thoại.');
+          return;
+        }
 
-      if (!isValidVietnamPhone(phone)) {
-        alert('Số điện thoại phải bắt đầu bằng số 0 và có đủ 10 số. Ví dụ: 0909289333');
-        return;
+        if (!isValidVietnamPhone(phone)) {
+          alert('Số điện thoại phải bắt đầu bằng số 0 và có đủ 10 số. Ví dụ: 0909289333');
+          return;
+        }
       }
 
       isSubmittingBooking = true;
@@ -1682,7 +1901,7 @@
       setCodeMessage('Đang xử lý đặt lịch...', '');
 
       try {
-        if ((currentMode === 'code' || currentMode === 'open') && !verifiedBookingCode) {
+        if (!isEventLock && (currentMode === 'code' || currentMode === 'open') && !verifiedBookingCode) {
           alert('Vui lòng xác nhận code trước khi đặt lịch.');
           resetSubmitButton();
           return;
@@ -1697,12 +1916,12 @@
           memberName: memberName,
           phone: phone,
           service: '',
-          status: 'booked',
-          bookingSource: currentMode === 'admin' ? 'Admin Booking' : (currentMode === 'open' ? 'Open Trial Booking' : 'Code Booking'),
+          status: isEventLock ? 'event' : 'booked',
+          bookingSource: isEventLock ? 'Admin Event Lock' : (currentMode === 'admin' ? 'Admin Booking' : (currentMode === 'open' ? 'Open Trial Booking' : 'Code Booking')),
           customerGroup: (currentMode === 'code' || currentMode === 'open') ? pickValue(verifiedCodeMeta, ['customerGroup', 'Customer Group', 'group'], '') : '',
           note: document.getElementById('note').value
         };
-        if (currentMode === 'code' || currentMode === 'open') {
+        if (!isEventLock && (currentMode === 'code' || currentMode === 'open')) {
           paramsObj.bookingCode = verifiedBookingCode;
         }
 
@@ -1744,6 +1963,10 @@
       document.getElementById('memberName').value = '';
       document.getElementById('phone').value = '';
       document.getElementById('note').value = '';
+      if (document.getElementById('isEventLock')) {
+        document.getElementById('isEventLock').checked = false;
+      }
+      toggleEventLockFields();
     }
   </script>
 </body>
