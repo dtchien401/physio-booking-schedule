@@ -606,17 +606,17 @@
     <section id="therapistLoginPanel" class="access-panel hidden">
       <div class="admin-login-grid">
         <div>
-          <label>Họ tên KTV</label>
-          <input id="therapistNameInput" placeholder="VD: Nguyễn Minh Duyên" />
+          <label>Số điện thoại (KTV)</label>
+          <input id="therapistPhoneInput" placeholder="VD: 0774777108" inputmode="numeric" maxlength="10" />
         </div>
         <div>
           <label>Staff code</label>
-          <input id="therapistCodeInput" placeholder="VD: 0101369" />
+          <input id="therapistCodeInput" placeholder="VD: 0101368" />
         </div>
         <button onclick="loginTherapist()">Đăng nhập</button>
       </div>
       <div id="therapistMessage" class="access-message">
-        Nhập đúng họ tên và staff code để xem và xác nhận lịch của mình.
+        Nhập đúng số điện thoại và staff code để xem và xác nhận lịch của mình.
       </div>
     </section>
 
@@ -714,6 +714,7 @@
     const ADMIN_SESSION_KEY = 'physio_admin_loggedin';
     const THERAPIST_NAME_KEY = 'physio_therapist_name';
     const THERAPIST_CODE_KEY = 'physio_therapist_code';
+    const THERAPIST_PHONE_KEY = 'physio_therapist_phone';
 
     document.addEventListener('DOMContentLoaded', function () {
       // Giữ trạng thái Admin Login sau khi refresh / mở lại trình duyệt.
@@ -906,23 +907,24 @@
     function getLoggedInTherapist() {
       return {
         name: localStorage.getItem(THERAPIST_NAME_KEY) || '',
-        code: localStorage.getItem(THERAPIST_CODE_KEY) || ''
+        code: localStorage.getItem(THERAPIST_CODE_KEY) || '',
+        phone: localStorage.getItem(THERAPIST_PHONE_KEY) || ''
       };
     }
 
     async function loginTherapist() {
-      const name = document.getElementById('therapistNameInput').value.trim();
+      const phone = document.getElementById('therapistPhoneInput').value.trim();
       const code = document.getElementById('therapistCodeInput').value.trim();
 
-      if (!name || !code) {
-        setTherapistMessage('Vui lòng nhập họ tên và staff code.', 'error');
+      if (!phone || !code) {
+        setTherapistMessage('Vui lòng nhập số điện thoại và staff code.', 'error');
         return;
       }
 
       setTherapistMessage('Đang kiểm tra...', '');
 
       try {
-        const params = new URLSearchParams({ action: 'therapistLogin', name: name, staffCode: code });
+        const params = new URLSearchParams({ action: 'therapistLogin', phone: phone, staffCode: code });
         const res = await jsonp(API_URL + '?' + params.toString() + '&v=' + Date.now());
 
         if (!res.success) {
@@ -932,6 +934,7 @@
 
         localStorage.setItem(THERAPIST_NAME_KEY, res.therapistName);
         localStorage.setItem(THERAPIST_CODE_KEY, res.staffCode);
+        localStorage.setItem(THERAPIST_PHONE_KEY, phone);
 
         currentMode = 'staff';
         document.getElementById('therapistCodeInput').value = '';
@@ -947,6 +950,7 @@
     function logoutTherapist() {
       localStorage.removeItem(THERAPIST_NAME_KEY);
       localStorage.removeItem(THERAPIST_CODE_KEY);
+      localStorage.removeItem(THERAPIST_PHONE_KEY);
       currentMode = 'code';
       updateModeUI();
       updateLocationFilter();
@@ -1468,7 +1472,7 @@
     async function confirmSessionAction(bookingId, result) {
       const me = getLoggedInTherapist();
 
-      if (!me.name || !me.code) {
+      if (!me.name || !me.code || !me.phone) {
         alert('Vui lòng đăng nhập KTV trước.');
         return;
       }
@@ -1481,7 +1485,7 @@
         const params = new URLSearchParams({
           action: 'confirmSession',
           bookingId: bookingId,
-          therapist: me.name,
+          therapistPhone: me.phone,
           staffCode: me.code,
           result: result
         });
