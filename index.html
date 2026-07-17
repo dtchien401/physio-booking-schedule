@@ -715,6 +715,7 @@
     const THERAPIST_NAME_KEY = 'physio_therapist_name';
     const THERAPIST_CODE_KEY = 'physio_therapist_code';
     const THERAPIST_PHONE_KEY = 'physio_therapist_phone';
+    const THERAPIST_SHORTNAME_KEY = 'physio_therapist_shortname';
 
     document.addEventListener('DOMContentLoaded', function () {
       // Giữ trạng thái Admin Login sau khi refresh / mở lại trình duyệt.
@@ -908,7 +909,8 @@
       return {
         name: localStorage.getItem(THERAPIST_NAME_KEY) || '',
         code: localStorage.getItem(THERAPIST_CODE_KEY) || '',
-        phone: localStorage.getItem(THERAPIST_PHONE_KEY) || ''
+        phone: localStorage.getItem(THERAPIST_PHONE_KEY) || '',
+        shortName: localStorage.getItem(THERAPIST_SHORTNAME_KEY) || ''
       };
     }
 
@@ -935,6 +937,7 @@
         localStorage.setItem(THERAPIST_NAME_KEY, res.therapistName);
         localStorage.setItem(THERAPIST_CODE_KEY, res.staffCode);
         localStorage.setItem(THERAPIST_PHONE_KEY, phone);
+        localStorage.setItem(THERAPIST_SHORTNAME_KEY, res.shortName || '');
 
         currentMode = 'staff';
         document.getElementById('therapistCodeInput').value = '';
@@ -951,6 +954,7 @@
       localStorage.removeItem(THERAPIST_NAME_KEY);
       localStorage.removeItem(THERAPIST_CODE_KEY);
       localStorage.removeItem(THERAPIST_PHONE_KEY);
+      localStorage.removeItem(THERAPIST_SHORTNAME_KEY);
       currentMode = 'code';
       updateModeUI();
       updateLocationFilter();
@@ -1388,13 +1392,17 @@
 
     function isMyBooking(booking) {
       const me = getLoggedInTherapist();
-      if (!me.name) return false;
+      if (!me.name && !me.shortName) return false;
 
-      // Ưu tiên so therapistCode (chính xác tuyệt đối), fallback so tên cho booking cũ chưa có therapistCode.
+      // Ưu tiên so therapistCode (chính xác tuyệt đối), fallback so short name —
+      // vì cột Therapist trong BOOKINGS/SCHEDULE lưu short name (VD: "Phương", "Đan"), không phải họ tên đầy đủ.
       if (booking.therapistCode && me.code) {
         return cleanText(booking.therapistCode) === cleanText(me.code);
       }
-      return cleanText(booking.therapist).toLowerCase() === cleanText(me.name).toLowerCase();
+
+      const bookingTherapist = cleanText(booking.therapist).toLowerCase();
+      return bookingTherapist === cleanText(me.shortName).toLowerCase()
+        || bookingTherapist === cleanText(me.name).toLowerCase();
     }
 
     function renderMyBookings() {
