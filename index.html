@@ -562,6 +562,9 @@
       <button id="adminTabBtn" class="mode-tab hidden" onclick="switchMode('admin')">Booking thường</button>
       <button id="adminLoginToggle" class="mode-tab" onclick="toggleAdminLogin()">Admin Login</button>
       <button id="adminLogoutBtn" class="mode-tab hidden" onclick="logoutAdmin()">Đăng xuất Admin</button>
+      <button id="staffTabBtn" class="mode-tab hidden" onclick="switchMode('staff')">Lịch của tôi (KTV)</button>
+      <button id="therapistLoginToggle" class="mode-tab" onclick="toggleTherapistLogin()">KTV Login</button>
+      <button id="therapistLogoutBtn" class="mode-tab hidden" onclick="logoutTherapist()">Đăng xuất KTV</button>
     </section>
 
     <section id="openAccessPanel" class="access-panel hidden">
@@ -597,6 +600,23 @@
       </div>
       <div id="adminMessage" class="access-message">
         Admin mới được dùng booking thường và xem thông tin chi tiết khách hàng.
+      </div>
+    </section>
+
+    <section id="therapistLoginPanel" class="access-panel hidden">
+      <div class="admin-login-grid">
+        <div>
+          <label>Họ tên KTV</label>
+          <input id="therapistNameInput" placeholder="VD: Nguyễn Minh Duyên" />
+        </div>
+        <div>
+          <label>Staff code</label>
+          <input id="therapistCodeInput" placeholder="VD: 0101369" />
+        </div>
+        <button onclick="loginTherapist()">Đăng nhập</button>
+      </div>
+      <div id="therapistMessage" class="access-message">
+        Nhập đúng họ tên và staff code để xem và xác nhận lịch của mình.
       </div>
     </section>
 
@@ -692,12 +712,17 @@
     const OPEN_TRIAL_CODE = 'OPENTRIAL';
 
     const ADMIN_SESSION_KEY = 'physio_admin_loggedin';
+    const THERAPIST_NAME_KEY = 'physio_therapist_name';
+    const THERAPIST_CODE_KEY = 'physio_therapist_code';
 
     document.addEventListener('DOMContentLoaded', function () {
       // Giữ trạng thái Admin Login sau khi refresh / mở lại trình duyệt.
       if (localStorage.getItem(ADMIN_SESSION_KEY) === 'true') {
         isAdminLoggedIn = true;
         currentMode = 'admin';
+      } else if (localStorage.getItem(THERAPIST_NAME_KEY)) {
+        // Giữ trạng thái KTV Login sau khi refresh, giống cơ chế Admin ở trên.
+        currentMode = 'staff';
       }
 
       const today = new Date();
@@ -732,6 +757,12 @@
         return;
       }
 
+      if (mode === 'staff' && !localStorage.getItem(THERAPIST_NAME_KEY)) {
+        toggleTherapistLogin();
+        setTherapistMessage('Vui lòng đăng nhập KTV trước khi xem lịch của mình.', 'error');
+        return;
+      }
+
       currentMode = mode;
 
       if (mode === 'open') {
@@ -753,6 +784,8 @@
       const isCode = currentMode === 'code';
       const isAdmin = currentMode === 'admin';
       const isOpen = currentMode === 'open';
+      const isStaff = currentMode === 'staff';
+      const isTherapistLoggedIn = !!localStorage.getItem(THERAPIST_NAME_KEY);
 
       document.getElementById('openTabBtn').classList.toggle('active', isOpen);
       document.getElementById('codeTabBtn').classList.toggle('active', isCode);
@@ -760,13 +793,22 @@
       document.getElementById('adminTabBtn').classList.toggle('hidden', !isAdminLoggedIn);
       document.getElementById('adminLogoutBtn').classList.toggle('hidden', !isAdminLoggedIn);
       document.getElementById('adminLoginToggle').classList.toggle('hidden', isAdminLoggedIn);
+
+      document.getElementById('staffTabBtn').classList.toggle('active', isStaff);
+      document.getElementById('staffTabBtn').classList.toggle('hidden', !isTherapistLoggedIn);
+      document.getElementById('therapistLogoutBtn').classList.toggle('hidden', !isTherapistLoggedIn);
+      document.getElementById('therapistLoginToggle').classList.toggle('hidden', isTherapistLoggedIn);
+
       document.getElementById('openAccessPanel').classList.toggle('hidden', !isOpen);
       document.getElementById('codeAccessPanel').classList.toggle('hidden', !isCode);
-      document.getElementById('modeWarning').classList.toggle('hidden', isAdmin);
+      document.getElementById('modeWarning').classList.toggle('hidden', isAdmin || isStaff);
 
       const notice = document.getElementById('pageNotice');
       if (notice) {
-        if (isAdmin) {
+        if (isStaff) {
+          const me = getLoggedInTherapist();
+          notice.innerText = 'KTV mode: đây là lịch riêng của ' + (me.name || 'bạn') + '. Chỉ hiện session của chính bạn, chỉ được confirm sau khi slot đã qua giờ bắt đầu.';
+        } else if (isAdmin) {
           notice.innerText = 'Admin mode: slot xanh nhạt = còn trống, xanh đậm = đã đặt, tím = khóa event, xám = đã qua giờ. Khi đã đặt, hệ thống map SĐT với sheet contract để hiện Gói / Đã dùng / Còn lại. Tick "Khóa lịch do event" trong form để chặn 1 slot không cho khách đặt.';
         } else if (isOpen) {
           notice.innerText = 'Trial công khai: ai cũng đặt được, không cần code. Mỗi số điện thoại chỉ được đặt trial 1 lần trên toàn hệ thống.';
@@ -845,6 +887,67 @@
       isAdminLoggedIn = false;
       currentMode = 'code';
       localStorage.removeItem(ADMIN_SESSION_KEY);
+      updateModeUI();
+      updateLocationFilter();
+      renderSchedule();
+    }
+
+    function toggleTherapistLogin() {
+      document.getElementById('therapistLoginPanel').classList.toggle('hidden');
+    }
+
+    function setTherapistMessage(message, type) {
+      const el = document.getElementById('therapistMessage');
+      if (!el) return;
+      el.className = 'access-message ' + (type || '');
+      el.innerText = message;
+    }
+
+    function getLoggedInTherapist() {
+      return {
+        name: localStorage.getItem(THERAPIST_NAME_KEY) || '',
+        code: localStorage.getItem(THERAPIST_CODE_KEY) || ''
+      };
+    }
+
+    async function loginTherapist() {
+      const name = document.getElementById('therapistNameInput').value.trim();
+      const code = document.getElementById('therapistCodeInput').value.trim();
+
+      if (!name || !code) {
+        setTherapistMessage('Vui lòng nhập họ tên và staff code.', 'error');
+        return;
+      }
+
+      setTherapistMessage('Đang kiểm tra...', '');
+
+      try {
+        const params = new URLSearchParams({ action: 'therapistLogin', name: name, staffCode: code });
+        const res = await jsonp(API_URL + '?' + params.toString() + '&v=' + Date.now());
+
+        if (!res.success) {
+          setTherapistMessage(res.message || 'Đăng nhập thất bại.', 'error');
+          return;
+        }
+
+        localStorage.setItem(THERAPIST_NAME_KEY, res.therapistName);
+        localStorage.setItem(THERAPIST_CODE_KEY, res.staffCode);
+
+        currentMode = 'staff';
+        document.getElementById('therapistCodeInput').value = '';
+        document.getElementById('therapistLoginPanel').classList.add('hidden');
+        setTherapistMessage('✓ Đăng nhập thành công: ' + res.therapistName, 'success');
+        updateModeUI();
+        renderSchedule();
+      } catch (err) {
+        setTherapistMessage('Không kết nối được API.', 'error');
+      }
+    }
+
+    function logoutTherapist() {
+      localStorage.removeItem(THERAPIST_NAME_KEY);
+      localStorage.removeItem(THERAPIST_CODE_KEY);
+      currentMode = 'code';
       updateModeUI();
       updateLocationFilter();
       renderSchedule();
@@ -1207,6 +1310,11 @@
     }
 
     function renderSchedule() {
+      if (currentMode === 'staff') {
+        renderMyBookings();
+        return;
+      }
+
       const date = document.getElementById('dateFilter').value;
       const locationFilter = document.getElementById('locationFilter').value;
       const container = document.getElementById('schedule');
@@ -1272,6 +1380,122 @@
           }).join('')}
         </div>
       `;
+    }
+
+    function isMyBooking(booking) {
+      const me = getLoggedInTherapist();
+      if (!me.name) return false;
+
+      // Ưu tiên so therapistCode (chính xác tuyệt đối), fallback so tên cho booking cũ chưa có therapistCode.
+      if (booking.therapistCode && me.code) {
+        return cleanText(booking.therapistCode) === cleanText(me.code);
+      }
+      return cleanText(booking.therapist).toLowerCase() === cleanText(me.name).toLowerCase();
+    }
+
+    function renderMyBookings() {
+      const date = document.getElementById('dateFilter').value;
+      const container = document.getElementById('schedule');
+      const me = getLoggedInTherapist();
+
+      const myBookings = bookings
+        .filter(function(b) {
+          const status = cleanText(b.status).toLowerCase();
+          return normalizeDate(b.date) === date &&
+            isMyBooking(b) &&
+            status !== 'cancelled' &&
+            status !== 'event';
+        })
+        .sort(function(a, b) {
+          return cleanTime(a.time).localeCompare(cleanTime(b.time));
+        });
+
+      if (!myBookings.length) {
+        container.innerHTML = `
+          <div class="empty">
+            <strong>Không có lịch đặt nào của bạn trong ngày ${escapeHtml(date)}.</strong><br>
+            Đổi ngày ở trên (khi bật lại filter) hoặc kiểm tra lại với admin nếu bạn nghĩ đây là nhầm lẫn.
+          </div>
+        `;
+        return;
+      }
+
+      container.innerHTML = `
+        <section class="location-card">
+          <h2>Lịch của ${escapeHtml(me.name)} — ${escapeHtml(date)}</h2>
+          <div class="therapist-grid" style="grid-template-columns: 1fr;">
+            ${myBookings.map(renderMyBookingRow).join('')}
+          </div>
+        </section>
+      `;
+    }
+
+    function renderMyBookingRow(booking) {
+      const status = cleanText(booking.servedStatus).toLowerCase();
+      const isPast = isPastSlot(normalizeDate(booking.date), cleanTime(booking.time));
+
+      let actionHtml;
+      if (status === 'served') {
+        actionHtml = '<span class="status-pill">✓ Đã phục vụ</span>';
+      } else if (status === 'no_show') {
+        actionHtml = '<span class="status-pill">Khách không đến</span>';
+      } else if (!isPast) {
+        actionHtml = '<span class="status-pill">Chưa tới giờ để confirm</span>';
+      } else {
+        actionHtml =
+          `<button onclick="confirmSessionAction('${escapeJs(booking.bookingId)}', 'served')">Xác nhận đã phục vụ</button>` +
+          `<button class="secondary" onclick="confirmSessionAction('${escapeJs(booking.bookingId)}', 'no_show')">Khách không đến</button>`;
+      }
+
+      return `
+        <div class="slot available">
+          <div>
+            <strong>${escapeHtml(booking.time)}</strong>
+            <div class="booked-info">
+              <div class="booked-name">${escapeHtml(booking.memberName || 'Chưa rõ tên')}</div>
+              <div>${booking.phone ? '📞 ' + escapeHtml(booking.phone) : ''}</div>
+              <div>${escapeHtml(booking.location)}</div>
+              ${booking.note ? '<div class="booked-note">📝 ' + escapeHtml(booking.note) + '</div>' : ''}
+            </div>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:8px; align-items:flex-end;">
+            ${actionHtml}
+          </div>
+        </div>
+      `;
+    }
+
+    async function confirmSessionAction(bookingId, result) {
+      const me = getLoggedInTherapist();
+
+      if (!me.name || !me.code) {
+        alert('Vui lòng đăng nhập KTV trước.');
+        return;
+      }
+
+      if (result === 'no_show' && !confirm('Xác nhận khách KHÔNG đến buổi này?')) {
+        return;
+      }
+
+      try {
+        const params = new URLSearchParams({
+          action: 'confirmSession',
+          bookingId: bookingId,
+          therapist: me.name,
+          staffCode: me.code,
+          result: result
+        });
+
+        const res = await jsonp(API_URL + '?' + params.toString() + '&v=' + Date.now());
+
+        alert(res.message || 'Đã xử lý xong.');
+
+        if (res.success) {
+          await loadData();
+        }
+      } catch (err) {
+        alert('Không gửi được xác nhận. Lỗi API: ' + (err && err.message ? err.message : err));
+      }
     }
 
     function renderSlot(row, date, slot) {
@@ -1439,7 +1663,12 @@
         bookingCode: pickValue(raw, ['bookingCode', 'Booking Code', 'BookingCode', 'Code', 'Mã booking', 'R', 'Column R', 'Col R'], ''),
         bookingSource: pickValue(raw, ['bookingSource', 'Booking Source', 'Source'], ''),
         customerGroup: pickValue(raw, ['customerGroup', 'Customer Group', 'group'], ''),
-        note: pickValue(raw, ['note', 'Note', 'Ghi chú'], '')
+        note: pickValue(raw, ['note', 'Note', 'Ghi chú'], ''),
+        therapistCode: pickValue(raw, ['therapistCode'], ''),
+        servedStatus: pickValue(raw, ['servedStatus'], ''),
+        servedAt: pickValue(raw, ['servedAt'], ''),
+        servedBy: pickValue(raw, ['servedBy'], ''),
+        contractSyncStatus: pickValue(raw, ['contractSyncStatus'], '')
       };
     }
 
