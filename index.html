@@ -1394,11 +1394,12 @@
       const me = getLoggedInTherapist();
       if (!me.name && !me.shortName) return false;
 
-      // Ưu tiên so therapistCode (chính xác tuyệt đối), fallback so short name —
-      // vì cột Therapist trong BOOKINGS/SCHEDULE lưu short name (VD: "Phương", "Đan"), không phải họ tên đầy đủ.
-      if (booking.therapistCode && me.code) {
-        return cleanText(booking.therapistCode) === cleanText(me.code);
-      }
+      // Thử CẢ 2 cách, khớp 1 trong 2 là đủ — tránh trường hợp therapistCode bị gán sai/thiếu
+      // (VD: booking tạo trước khi có tính năng KTV) làm chặn luôn không cho thử fallback theo tên.
+      const codeMatch = booking.therapistCode && me.code &&
+        cleanText(booking.therapistCode) === cleanText(me.code);
+
+      if (codeMatch) return true;
 
       const bookingTherapist = cleanText(booking.therapist).toLowerCase();
       return bookingTherapist === cleanText(me.shortName).toLowerCase()
@@ -1447,7 +1448,9 @@
       const isPast = isPastSlot(normalizeDate(booking.date), cleanTime(booking.time));
 
       let actionHtml;
-      if (status === 'served') {
+      if (!booking.bookingId) {
+        actionHtml = '<span class="status-pill">⚠️ Booking thiếu ID hệ thống — báo admin bổ sung</span>';
+      } else if (status === 'served') {
         actionHtml = '<span class="status-pill">✓ Đã phục vụ</span>';
       } else if (status === 'no_show') {
         actionHtml = '<span class="status-pill">Khách không đến</span>';
