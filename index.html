@@ -667,19 +667,35 @@
         </label>
       </div>
 
-      <div class="form-group">
-        <label id="memberNameLabel">Tên hội viên</label>
-        <input id="memberName" placeholder="Nhập tên hội viên" />
+      <div class="form-group" id="serviceTypeGroup">
+        <label>Loại dịch vụ <span style="color:#dc2626;">*</span></label>
+        <select id="serviceType" onchange="onServiceTypeChange()">
+          <option value="">-- Chọn Trial hoặc Burn SS --</option>
+          <option value="Trial">Trial</option>
+          <option value="Burn SS">Burn SS (Trừ buổi trong hợp đồng)</option>
+        </select>
       </div>
 
-      <div class="form-group" id="phoneGroup">
-        <label>Số điện thoại</label>
-        <input id="phone" type="text" inputmode="numeric" maxlength="10" pattern="0[0-9]{9}" placeholder="VD: 0909289333" autocomplete="tel" />
-      </div>
+      <div id="restBookingFields" class="hidden">
+        <div class="form-group hidden" id="contractNumberGroup">
+          <label>Số hợp đồng (HĐ) <span style="color:#dc2626;">*</span></label>
+          <input id="contractNumberInput" placeholder="Nhập số hợp đồng đang dùng để burn session" />
+        </div>
 
-      <div class="form-group">
-        <label>Ghi chú</label>
-        <textarea id="note" rows="3" placeholder="Ghi chú thêm nếu có"></textarea>
+        <div class="form-group">
+          <label id="memberNameLabel">Tên hội viên</label>
+          <input id="memberName" placeholder="Nhập tên hội viên" />
+        </div>
+
+        <div class="form-group" id="phoneGroup">
+          <label>Số điện thoại</label>
+          <input id="phone" type="text" inputmode="numeric" maxlength="10" pattern="0[0-9]{9}" placeholder="VD: 0909289333" autocomplete="tel" />
+        </div>
+
+        <div class="form-group">
+          <label>Ghi chú</label>
+          <textarea id="note" rows="3" placeholder="Ghi chú thêm nếu có"></textarea>
+        </div>
       </div>
 
       <div class="modal-actions">
@@ -1934,6 +1950,10 @@
       // Chỉ admin mới được phép khóa lịch do event (chặn slot mà không cần thông tin khách).
       document.getElementById('eventLockGroup').classList.toggle('hidden', currentMode !== 'admin');
       document.getElementById('isEventLock').checked = false;
+
+      // Bắt buộc chọn lại Trial / Burn SS mỗi lần mở modal mới.
+      document.getElementById('serviceType').value = '';
+      document.getElementById('contractNumberInput').value = '';
       toggleEventLockFields();
 
       document.getElementById('bookingModal').style.display = 'flex';
@@ -1946,6 +1966,30 @@
       document.getElementById('memberNameLabel').innerText = isEvent ? 'Tên sự kiện' : 'Tên hội viên';
       document.getElementById('memberName').placeholder = isEvent ? 'VD: Họp nội bộ, bảo trì phòng...' : 'Nhập tên hội viên';
       document.getElementById('phoneGroup').classList.toggle('hidden', isEvent);
+
+      // Khóa lịch do event thì không cần chọn Trial/Burn SS, hiện thẳng các field còn lại.
+      document.getElementById('serviceTypeGroup').classList.toggle('hidden', isEvent);
+      if (isEvent) {
+        document.getElementById('restBookingFields').classList.remove('hidden');
+        document.getElementById('contractNumberGroup').classList.add('hidden');
+      } else {
+        onServiceTypeChange();
+      }
+    }
+
+    function onServiceTypeChange() {
+      const serviceType = document.getElementById('serviceType').value;
+      const restFields = document.getElementById('restBookingFields');
+      const contractGroup = document.getElementById('contractNumberGroup');
+
+      // Bắt buộc chọn Trial hay Burn SS trước, mới cho đi tiếp các field còn lại.
+      restFields.classList.toggle('hidden', !serviceType);
+
+      // Chọn Burn SS thì bắt buộc hiện field số hợp đồng để điền.
+      contractGroup.classList.toggle('hidden', serviceType !== 'Burn SS');
+      if (serviceType !== 'Burn SS') {
+        document.getElementById('contractNumberInput').value = '';
+      }
     }
 
     function closeModal() {
@@ -1974,6 +2018,21 @@
 
       const eventLockCheckbox = document.getElementById('isEventLock');
       const isEventLock = currentMode === 'admin' && !!(eventLockCheckbox && eventLockCheckbox.checked);
+
+      const serviceType = document.getElementById('serviceType').value;
+      const contractNumber = document.getElementById('contractNumberInput').value.trim();
+
+      if (!isEventLock) {
+        if (!serviceType) {
+          alert('Vui lòng chọn loại dịch vụ: Trial hoặc Burn SS trước khi đặt lịch.');
+          return;
+        }
+
+        if (serviceType === 'Burn SS' && !contractNumber) {
+          alert('Vui lòng nhập số hợp đồng (HĐ) để burn session.');
+          return;
+        }
+      }
 
       const memberName = document.getElementById('memberName').value.trim();
       const phone = isEventLock ? '' : document.getElementById('phone').value.trim();
@@ -2014,7 +2073,7 @@
           therapist: document.getElementById('selectedTherapist').value,
           memberName: memberName,
           phone: phone,
-          service: '',
+          service: isEventLock ? '' : serviceType,
           status: isEventLock ? 'event' : 'booked',
           bookingSource: isEventLock ? 'Admin Event Lock' : (currentMode === 'admin' ? 'Admin Booking' : (currentMode === 'open' ? 'Open Trial Booking' : 'Code Booking')),
           customerGroup: (currentMode === 'code' || currentMode === 'open') ? pickValue(verifiedCodeMeta, ['customerGroup', 'Customer Group', 'group'], '') : '',
@@ -2022,6 +2081,9 @@
         };
         if (!isEventLock && (currentMode === 'code' || currentMode === 'open')) {
           paramsObj.bookingCode = verifiedBookingCode;
+        }
+        if (!isEventLock && serviceType === 'Burn SS') {
+          paramsObj.contractNumber = contractNumber;
         }
 
         const params = new URLSearchParams(paramsObj);
@@ -2062,6 +2124,8 @@
       document.getElementById('memberName').value = '';
       document.getElementById('phone').value = '';
       document.getElementById('note').value = '';
+      document.getElementById('serviceType').value = '';
+      document.getElementById('contractNumberInput').value = '';
       if (document.getElementById('isEventLock')) {
         document.getElementById('isEventLock').checked = false;
       }
