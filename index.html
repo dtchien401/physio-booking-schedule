@@ -2073,7 +2073,11 @@
           therapist: document.getElementById('selectedTherapist').value,
           memberName: memberName,
           phone: phone,
-          service: isEventLock ? '' : serviceType,
+          // Cột Service trên Google Sheet có Data Validation chỉ chấp nhận:
+          // Trial, Session, Trial paid, Shooting, Gia Dinh Trial — KHÔNG có "Burn SS".
+          // "Burn SS" chỉ là label hiển thị cho người dùng dễ hiểu; giá trị thật sự
+          // gửi lên Sheet phải là "Session" để không bị Sheet từ chối ghi (reject input).
+          service: isEventLock ? '' : (serviceType === 'Burn SS' ? 'Session' : serviceType),
           status: isEventLock ? 'event' : 'booked',
           bookingSource: isEventLock ? 'Admin Event Lock' : (currentMode === 'admin' ? 'Admin Booking' : (currentMode === 'open' ? 'Open Trial Booking' : 'Code Booking')),
           customerGroup: (currentMode === 'code' || currentMode === 'open') ? pickValue(verifiedCodeMeta, ['customerGroup', 'Customer Group', 'group'], '') : '',
