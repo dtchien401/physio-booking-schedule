@@ -557,8 +557,8 @@
     </header>
 
     <section class="mode-tabs">
-      <button id="openTabBtn" class="mode-tab hidden" onclick="switchMode('open')">Đặt Trial (Ai cũng đặt được)</button>
-      <button id="codeTabBtn" class="mode-tab hidden" onclick="switchMode('code')">Book bằng Code</button>
+      <button id="openTabBtn" class="mode-tab" onclick="switchMode('open')">Đặt Trial (Ai cũng đặt được)</button>
+      <button id="codeTabBtn" class="mode-tab active" onclick="switchMode('code')">Book bằng Code</button>
       <button id="adminTabBtn" class="mode-tab hidden" onclick="switchMode('admin')">Booking thường</button>
       <button id="adminLoginToggle" class="mode-tab" onclick="toggleAdminLogin()">Admin Login</button>
       <button id="adminLogoutBtn" class="mode-tab hidden" onclick="logoutAdmin()">Đăng xuất Admin</button>
@@ -716,11 +716,7 @@
     let bookings = [];
     let scheduleRows = [];
     let contracts = [];
-    // ⚠️ TẠM ẨN 2 tab "Đặt Trial" và "Book bằng Code" cho khách vãng lai (không cần đăng nhập).
-    // Muốn bật lại: đổi false -> true, đồng thời gỡ class "hidden" ở 2 nút openTabBtn/codeTabBtn phía trên.
-    const TEMP_HIDE_PUBLIC_TABS = true;
-
-    let currentMode = TEMP_HIDE_PUBLIC_TABS ? 'closed' : 'code';
+    let currentMode = 'code';
     let isAdminLoggedIn = false;
     let verifiedBookingCode = null;
     let verifiedCodeMeta = null;
@@ -746,8 +742,6 @@
         // Giữ trạng thái KTV Login sau khi refresh, giống cơ chế Admin ở trên.
         currentMode = 'staff';
       }
-      // Nếu không phải admin/KTV và đang tạm ẩn 2 tab công khai, currentMode giữ nguyên 'closed'
-      // (được set ở khai báo `let currentMode` phía trên) thay vì rơi về 'code' như mặc định cũ.
 
       const today = new Date();
       document.getElementById('dateFilter').value = today.toISOString().split('T')[0];
@@ -836,10 +830,8 @@
           notice.innerText = 'Admin mode: slot xanh nhạt = còn trống, xanh đậm = đã đặt, tím = khóa event, xám = đã qua giờ. Khi đã đặt, hệ thống map SĐT với sheet contract để hiện Gói / Đã dùng / Còn lại. Tick "Khóa lịch do event" trong form để chặn 1 slot không cho khách đặt.';
         } else if (isOpen) {
           notice.innerText = 'Trial công khai: ai cũng đặt được, không cần code. Mỗi số điện thoại chỉ được đặt trial 1 lần trên toàn hệ thống.';
-        } else if (isCode) {
-          notice.innerText = 'Customer mode: slot xanh nhạt = còn trống, xanh đậm/tím = đã kín, xám = đã qua giờ. Rule code được kiểm tra bởi Apps Script khi submit.';
         } else {
-          notice.innerText = 'Hệ thống đang tạm đóng đặt lịch Trial / Book bằng Code. Vui lòng liên hệ trực tiếp Cali để được hỗ trợ đặt lịch.';
+          notice.innerText = 'Customer mode: slot xanh nhạt = còn trống, xanh đậm/tím = đã kín, xám = đã qua giờ. Rule code được kiểm tra bởi Apps Script khi submit.';
         }
       }
     }
@@ -1615,14 +1607,10 @@
       const canBook = currentMode === 'admin' || currentMode === 'open' || !!verifiedBookingCode;
       const buttonLabel = currentMode === 'admin'
         ? 'Đặt lịch'
-        : (currentMode === 'open'
-          ? 'Đặt lịch Trial'
-          : (verifiedBookingCode ? 'Đặt bằng code' : (currentMode === 'code' ? 'Nhập code trước' : 'Tạm đóng đặt lịch')));
+        : (currentMode === 'open' ? 'Đặt lịch Trial' : (verifiedBookingCode ? 'Đặt bằng code' : 'Nhập code trước'));
       const buttonHtml = canBook
         ? `<button onclick="openBookingModal('${escapeJs(date)}', '${escapeJs(slot)}', '${escapeJs(row.location)}', '${escapeJs(row.therapist)}')">${buttonLabel}</button>`
-        : (currentMode === 'code'
-          ? `<button class="secondary" onclick="setCodeMessage('Vui lòng nhập và xác nhận code trước khi chọn slot.', 'error')">${buttonLabel}</button>`
-          : `<button class="secondary" onclick="alert('Đặt lịch Trial / Code đang tạm đóng. Vui lòng liên hệ trực tiếp Cali để được hỗ trợ đặt lịch.')">${buttonLabel}</button>`);
+        : `<button class="secondary" onclick="setCodeMessage('Vui lòng nhập và xác nhận code trước khi chọn slot.', 'error')">${buttonLabel}</button>`;
 
       return `
         <div class="slot available">
