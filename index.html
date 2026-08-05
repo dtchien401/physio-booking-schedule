@@ -972,7 +972,8 @@
         updateModeUI();
         renderSchedule();
       } catch (err) {
-        setTherapistMessage('Không kết nối được API.', 'error');
+        console.error('THERAPIST LOGIN API ERROR:', err);
+        setTherapistMessage('Không kết nối được API: ' + (err && err.message ? err.message : err), 'error');
       }
     }
 
@@ -1044,7 +1045,8 @@
         setCodeMessage(successMessage, 'success');
         renderSchedule();
       } catch (err) {
-        setCodeMessage('Không kiểm tra được code. Cần update Apps Script action=verifyCode để đọc sheet Code, cột A.', 'error');
+        console.error('VERIFY CODE API ERROR:', err);
+        setCodeMessage('Không kiểm tra được code: ' + (err && err.message ? err.message : err), 'error');
         renderSchedule();
       }
     }
@@ -1061,8 +1063,8 @@
 
         const timer = setTimeout(function() {
           cleanup();
-          reject(new Error('API timeout: Apps Script không trả response JSONP. Kiểm tra doGet/action book/callback.'));
-        }, 20000);
+          reject(new Error('API timeout sau 45 giây. Kiểm tra deployment /exec, quyền Anyone và Apps Script Executions. URL: ' + url));
+        }, 45000);
 
         window[callback] = function(data) {
           clearTimeout(timer);
@@ -1077,11 +1079,21 @@
         script.onerror = function() {
           clearTimeout(timer);
           cleanup();
-          reject(new Error('Không thể kết nối API Google Apps Script. Có thể Web App chưa Deploy/không để Anyone access/URL sai.'));
+          reject(new Error('Không tải được JSONP từ Google Apps Script. Thường do deployment chưa cập nhật, quyền truy cập không phải Anyone, hoặc URL /exec sai. URL: ' + script.src));
         };
 
         document.body.appendChild(script);
       });
+    }
+
+
+    async function testApiHealth() {
+      const result = await jsonp(API_URL + '?action=health&v=' + Date.now());
+      if (!result || !result.success) {
+        throw new Error(result && result.message ? result.message : 'Health check thất bại.');
+      }
+      console.log('API health:', result);
+      return result;
     }
 
 
@@ -1296,7 +1308,8 @@
         renderSchedule();
 
       } catch (err) {
-        container.innerHTML = '<div class="loading">Không kết nối được API. Vui lòng kiểm tra lại phần Deploy của Apps Script.</div>';
+        console.error('LOAD DATA API ERROR:', err);
+        container.innerHTML = '<div class="loading">Không kết nối được API: ' + escapeHtml(err && err.message ? err.message : String(err)) + '</div>';
       }
     }
 
