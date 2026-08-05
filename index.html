@@ -633,7 +633,7 @@
         </select>
       </div>
 
-      <button onclick="loadData()">Làm mới</button>
+      <button onclick="loadData(true)">Làm mới</button>
     </section>
 
     <div id="modeWarning" class="soft-warning">
@@ -972,8 +972,7 @@
         updateModeUI();
         renderSchedule();
       } catch (err) {
-        console.error('THERAPIST LOGIN API ERROR:', err);
-        setTherapistMessage('Không kết nối được API: ' + (err && err.message ? err.message : err), 'error');
+        setTherapistMessage('Không kết nối được API.', 'error');
       }
     }
 
@@ -1045,8 +1044,7 @@
         setCodeMessage(successMessage, 'success');
         renderSchedule();
       } catch (err) {
-        console.error('VERIFY CODE API ERROR:', err);
-        setCodeMessage('Không kiểm tra được code: ' + (err && err.message ? err.message : err), 'error');
+        setCodeMessage('Không kiểm tra được code. Cần update Apps Script action=verifyCode để đọc sheet Code, cột A.', 'error');
         renderSchedule();
       }
     }
@@ -1063,8 +1061,8 @@
 
         const timer = setTimeout(function() {
           cleanup();
-          reject(new Error('API timeout sau 45 giây. Kiểm tra deployment /exec, quyền Anyone và Apps Script Executions. URL: ' + url));
-        }, 45000);
+          reject(new Error('API timeout: Apps Script không trả response JSONP. Kiểm tra doGet/action book/callback.'));
+        }, 20000);
 
         window[callback] = function(data) {
           clearTimeout(timer);
@@ -1079,21 +1077,11 @@
         script.onerror = function() {
           clearTimeout(timer);
           cleanup();
-          reject(new Error('Không tải được JSONP từ Google Apps Script. Thường do deployment chưa cập nhật, quyền truy cập không phải Anyone, hoặc URL /exec sai. URL: ' + script.src));
+          reject(new Error('Không thể kết nối API Google Apps Script. Có thể Web App chưa Deploy/không để Anyone access/URL sai.'));
         };
 
         document.body.appendChild(script);
       });
-    }
-
-
-    async function testApiHealth() {
-      const result = await jsonp(API_URL + '?action=health&v=' + Date.now());
-      if (!result || !result.success) {
-        throw new Error(result && result.message ? result.message : 'Health check thất bại.');
-      }
-      console.log('API health:', result);
-      return result;
     }
 
 
@@ -1266,14 +1254,24 @@
         });
     }
 
-    async function loadData() {
+    // Cache contracts ở client giữa các lần đổi ngày trong cùng phiên — vì contract
+    // (gói dịch vụ của khách) không phụ thuộc vào ngày đang xem lịch. Giúp giảm 1/3
+    // lượng dữ liệu server phải đọc lại mỗi khi chỉ đổi ngày xem (không phải Làm mới).
+    let cachedContracts = null;
+
+    async function loadData(forceFull) {
       const date = document.getElementById('dateFilter').value;
       const container = document.getElementById('schedule');
 
       container.innerHTML = '<div class="loading">Đang tải dữ liệu đặt lịch...</div>';
 
+      // Chỉ bỏ qua đọc lại contract khi: không phải force full (không phải bấm "Làm mới"
+      // hoặc lần tải đầu tiên) VÀ đã có sẵn cache từ lần load trước.
+      const skipContracts = !forceFull && cachedContracts !== null;
+      const includeContractsParam = skipContracts ? '&includeContracts=0' : '';
+
       try {
-        const res = await jsonp(API_URL + '?action=list&date=' + encodeURIComponent(date) + '&v=' + Date.now());
+        const res = await jsonp(API_URL + '?action=list&date=' + encodeURIComponent(date) + includeContractsParam + '&v=' + Date.now());
 
         if (!res.success) {
           container.innerHTML = '<div class="loading">Lỗi: ' + (res.message || 'Không tải được dữ liệu') + '</div>';
@@ -1294,10 +1292,15 @@
           });
 
         // Prefer contracts returned by Apps Script if available.
-        // If not available, read contract.csv directly from GitHub Pages.
-        contracts = res.contracts || res.contract || [];
-        if (!contracts.length) {
-          contracts = await loadContractsFromCSV();
+        // Nếu server trả contractsSkipped=true (do mình chủ động bỏ qua), dùng lại cache cũ.
+        if (res.contractsSkipped && cachedContracts) {
+          contracts = cachedContracts;
+        } else {
+          contracts = res.contracts || res.contract || [];
+          if (!contracts.length) {
+            contracts = await loadContractsFromCSV();
+          }
+          cachedContracts = contracts;
         }
 
         console.log('Loaded bookings:', bookings.length);
@@ -1308,8 +1311,7 @@
         renderSchedule();
 
       } catch (err) {
-        console.error('LOAD DATA API ERROR:', err);
-        container.innerHTML = '<div class="loading">Không kết nối được API: ' + escapeHtml(err && err.message ? err.message : String(err)) + '</div>';
+        container.innerHTML = '<div class="loading">Không kết nối được API. Vui lòng kiểm tra lại phần Deploy của Apps Script.</div>';
       }
     }
 
@@ -1545,7 +1547,7 @@
         alert(res.message || 'Đã xử lý xong.');
 
         if (res.success) {
-          await loadData();
+          await loadData(true);
         }
       } catch (err) {
         alert('Không gửi được xác nhận. Lỗi API: ' + (err && err.message ? err.message : err));
@@ -2130,7 +2132,7 @@
         if (res.success) {
           closeModal();
           clearForm();
-          await loadData();
+          await loadData(true);
           if (currentMode === 'code' && verifiedBookingCode) {
             const successfulCode = verifiedBookingCode;
             setCodeMessage('✓ Đặt lịch thành công.', 'success');
