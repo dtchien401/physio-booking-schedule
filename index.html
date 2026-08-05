@@ -693,6 +693,16 @@
         </div>
 
         <div class="form-group">
+          <label>Tên PT (Personal Trainer)</label>
+          <input id="ptName" placeholder="Tên PT đang chăm sóc khách (nếu có)" />
+        </div>
+
+        <div class="form-group">
+          <label>Staff code PT</label>
+          <input id="ptStaffCode" placeholder="Staff code của PT (nếu có)" />
+        </div>
+
+        <div class="form-group">
           <label>Ghi chú</label>
           <textarea id="note" rows="3" placeholder="Ghi chú thêm nếu có"></textarea>
         </div>
@@ -1954,6 +1964,8 @@
       // Bắt buộc chọn lại Trial / Burn SS mỗi lần mở modal mới.
       document.getElementById('serviceType').value = '';
       document.getElementById('contractNumberInput').value = '';
+      document.getElementById('ptName').value = '';
+      document.getElementById('ptStaffCode').value = '';
       toggleEventLockFields();
 
       document.getElementById('bookingModal').style.display = 'flex';
@@ -2089,6 +2101,12 @@
         if (!isEventLock && serviceType === 'Burn SS') {
           paramsObj.contractNumber = contractNumber;
         }
+        if (!isEventLock) {
+          const ptName = document.getElementById('ptName').value.trim();
+          const ptStaffCode = document.getElementById('ptStaffCode').value.trim();
+          if (ptName) paramsObj.ptName = ptName;
+          if (ptStaffCode) paramsObj.ptStaffCode = ptStaffCode;
+        }
 
         const params = new URLSearchParams(paramsObj);
 
@@ -2130,6 +2148,8 @@
       document.getElementById('note').value = '';
       document.getElementById('serviceType').value = '';
       document.getElementById('contractNumberInput').value = '';
+      document.getElementById('ptName').value = '';
+      document.getElementById('ptStaffCode').value = '';
       if (document.getElementById('isEventLock')) {
         document.getElementById('isEventLock').checked = false;
       }
