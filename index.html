@@ -1789,8 +1789,10 @@
         usedSessions: used,
         remainingSessions: remain,
         status: pickValue(raw, [
-          'Payment Status',
-          'status'
+          'Contract status',
+          'contractStatus',
+          'status',
+          'Payment Status'
         ], '')
       };
     }
@@ -1809,7 +1811,11 @@
             contractPhone.endsWith(targetPhone) ||
             targetPhone.endsWith(contractPhone)
           );
-        });
+        })
+        // Hợp đồng "Expired" (hết hạn) không được tính nữa, dù còn buổi (remain > 0) —
+        // để tránh dùng nhầm hợp đồng đã hết hạn cho khách. "Active" và "Not Started"
+        // (hợp đồng mới, chưa tới ngày bắt đầu) vẫn được tính bình thường.
+        .filter(c => String(c.status || '').trim().toLowerCase() !== 'expired');
 
       console.log('BOOKING PHONE MAP:', phone, '=>', targetPhone, 'MATCHES:', matched);
 
